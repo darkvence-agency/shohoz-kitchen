@@ -1,0 +1,20 @@
+{
+  "name": "shohoz-kitchen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shohoz Kitchen — single-vendor kitchenware store. Next.js storefront + admin (ShohozKitchen_Client) and Express API (ShohozKitchen_Server).",
+  "scripts": {
+    "install:all": "npm --prefix ShohozKitchen_Server install && npm --prefix ShohozKitchen_Client install",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "npm --prefix ShohozKitchen_Server run start:dev",
+    "dev:web": "npm --prefix ShohozKitchen_Client run dev",
+    "build": "npm --prefix ShohozKitchen_Server run build && npm --prefix ShohozKitchen_Client run build",
+    "build:api": "npm --prefix ShohozKitchen_Server run build",
+    "build:web": "npm --prefix ShohozKitchen_Client run build",
+    "typecheck": "cd ShohozKitchen_Server && npx tsc --noEmit && cd ../ShohozKitchen_Client && npx tsc --noEmit",
+    "lint:web": "npm --prefix ShohozKitchen_Client run lint"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

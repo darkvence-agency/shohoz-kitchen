@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────────────────────────
+# Render Blueprint — Shohoz Kitchen backend API
+#
+# Deploy:
+#   1. Render Dashboard → New + → Blueprint → connect the Shohoz-Kitchen monorepo.
+#      The service builds from ShohozKitchen_Server/ (rootDir below).
+#      Render reads this file and creates the web service (build/start/region).
+#   2. Open the service → Environment → "Add from .env" → paste the whole
+#      contents of .env.render (kept out of git) → Save. It redeploys.
+#   3. After the Vercel frontend is live, update FRONTEND_URL, PAYMENT_FRONTEND_URL
+#      (Vercel URL) and PAYMENT_BACKEND_URL (this Render URL) in the env, then redeploy.
+#
+# Note: do NOT set PORT — Render injects it and the app already reads process.env.PORT.
+# ──────────────────────────────────────────────────────────────────
+services:
+  - type: web
+    name: shohozkitchen-server
+    runtime: node
+    region: singapore          # closest Render region to Bangladesh
+    plan: free                  # free spins down when idle (cold start); upgrade for always-on
+    branch: main
+    rootDir: ShohozKitchen_Server   # monorepo: the API lives in this folder
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.18.1
+      # All other variables (secrets + URLs) are set via the dashboard
+      # "Add from .env" bulk paste using .env.render — see step 2 above.

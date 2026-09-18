@@ -1,0 +1,497 @@
+{
+  "categories": [
+    {
+      "id": 1,
+      "name": "Electronics",
+      "slug": "electronics",
+      "image": "/categories/electronics.jpg"
+    },
+    {
+      "id": 2,
+      "name": "Fashion",
+      "slug": "fashion",
+      "image": "/categories/fashion.jpg"
+    },
+    {
+      "id": 3,
+      "name": "Home & Kitchen",
+      "slug": "home-kitchen",
+      "image": "/categories/home-kitchen.jpg"
+    },
+    {
+      "id": 4,
+      "name": "Sports & Fitness",
+      "slug": "sports-fitness",
+      "image": "/categories/sports.jpg"
+    },
+    {
+      "id": 5,
+      "name": "Beauty & Health",
+      "slug": "beauty-health",
+      "image": "/categories/beauty.jpg"
+    },
+    {
+      "id": 6,
+      "name": "Books",
+      "slug": "books",
+      "image": "/categories/books.jpg"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "name": "Wireless Bluetooth Headphones",
+      "slug": "wireless-bluetooth-headphones",
+      "description": "Premium wireless headphones with active noise cancellation, 30-hour battery life, and superior sound quality.",
+      "price": 2999,
+      "originalPrice": 4999,
+      "discount": 40,
+      "category": "Electronics",
+      "categoryId": 1,
+      "image": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500",
+        "https://images.unsplash.com/photo-1484704849700-f032a568e944?w=500"
+      ],
+      "rating": 4.5,
+      "reviews": 234,
+      "stock": 50,
+      "brand": "SoundMax",
+      "features": ["Noise Cancellation", "30hr Battery", "Bluetooth 5.0"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 2,
+      "name": "Smart Watch Pro",
+      "slug": "smart-watch-pro",
+      "description": "Advanced smartwatch with health monitoring, GPS tracking, and water resistance up to 50m.",
+      "price": 5499,
+      "originalPrice": 7999,
+      "discount": 31,
+      "category": "Electronics",
+      "categoryId": 1,
+      "image": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500",
+        "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=500"
+      ],
+      "rating": 4.7,
+      "reviews": 567,
+      "stock": 35,
+      "brand": "TechGear",
+      "features": ["Heart Rate Monitor", "GPS", "Water Resistant"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 3,
+      "name": "Portable Bluetooth Speaker",
+      "slug": "portable-bluetooth-speaker",
+      "description": "Compact and powerful speaker with 360° sound, waterproof design, and 20-hour playtime.",
+      "price": 1499,
+      "originalPrice": 2499,
+      "discount": 40,
+      "category": "Electronics",
+      "categoryId": 1,
+      "image": "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=500"
+      ],
+      "rating": 4.3,
+      "reviews": 189,
+      "stock": 80,
+      "brand": "BassBoost",
+      "features": ["Waterproof", "20hr Battery", "Portable"],
+      "isNew": false,
+      "isFeatured": false
+    },
+    {
+      "id": 4,
+      "name": "Men's Casual Cotton Shirt",
+      "slug": "mens-casual-cotton-shirt",
+      "description": "Premium quality cotton shirt perfect for casual and semi-formal occasions. Available in multiple colors.",
+      "price": 899,
+      "originalPrice": 1499,
+      "discount": 40,
+      "category": "Fashion",
+      "categoryId": 2,
+      "image": "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=500",
+        "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=500"
+      ],
+      "rating": 4.2,
+      "reviews": 312,
+      "stock": 100,
+      "brand": "StyleHub",
+      "features": ["100% Cotton", "Breathable", "Multiple Colors"],
+      "sizes": ["S", "M", "L", "XL", "XXL"],
+      "colors": ["White", "Blue", "Black", "Grey"],
+      "isNew": false,
+      "isFeatured": true
+    },
+    {
+      "id": 5,
+      "name": "Women's Designer Handbag",
+      "slug": "womens-designer-handbag",
+      "description": "Elegant leather handbag with spacious compartments, perfect for everyday use and special occasions.",
+      "price": 2499,
+      "originalPrice": 3999,
+      "discount": 38,
+      "category": "Fashion",
+      "categoryId": 2,
+      "image": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=500",
+        "https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?w=500"
+      ],
+      "rating": 4.6,
+      "reviews": 445,
+      "stock": 25,
+      "brand": "LuxStyle",
+      "features": ["Genuine Leather", "Multiple Pockets", "Adjustable Strap"],
+      "colors": ["Brown", "Black", "Tan"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 6,
+      "name": "Classic Denim Jeans",
+      "slug": "classic-denim-jeans",
+      "description": "Comfortable stretch denim jeans with classic fit. Perfect for everyday wear with excellent durability.",
+      "price": 1299,
+      "originalPrice": 1999,
+      "discount": 35,
+      "category": "Fashion",
+      "categoryId": 2,
+      "image": "https://images.unsplash.com/photo-1542272604-787c3835535d?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1542272604-787c3835535d?w=500"
+      ],
+      "rating": 4.4,
+      "reviews": 678,
+      "stock": 150,
+      "brand": "DenimCo",
+      "features": ["Stretch Fabric", "Classic Fit", "Durable"],
+      "sizes": ["28", "30", "32", "34", "36", "38"],
+      "colors": ["Blue", "Black", "Grey"],
+      "isNew": false,
+      "isFeatured": false
+    },
+    {
+      "id": 7,
+      "name": "Non-Stick Cookware Set",
+      "slug": "non-stick-cookware-set",
+      "description": "Complete 10-piece cookware set with premium non-stick coating. Includes pans, pots, and utensils.",
+      "price": 3999,
+      "originalPrice": 5999,
+      "discount": 33,
+      "category": "Home & Kitchen",
+      "categoryId": 3,
+      "image": "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=500"
+      ],
+      "rating": 4.5,
+      "reviews": 234,
+      "stock": 40,
+      "brand": "KitchenPro",
+      "features": ["Non-Stick", "10 Pieces", "Dishwasher Safe"],
+      "isNew": false,
+      "isFeatured": true
+    },
+    {
+      "id": 8,
+      "name": "Automatic Coffee Maker",
+      "slug": "automatic-coffee-maker",
+      "description": "Programmable coffee maker with built-in grinder. Makes up to 12 cups with customizable brew strength.",
+      "price": 4499,
+      "originalPrice": 6499,
+      "discount": 31,
+      "category": "Home & Kitchen",
+      "categoryId": 3,
+      "image": "https://images.unsplash.com/photo-1517668808822-9ebb02f2a0e6?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1517668808822-9ebb02f2a0e6?w=500"
+      ],
+      "rating": 4.7,
+      "reviews": 156,
+      "stock": 30,
+      "brand": "BrewMaster",
+      "features": ["Built-in Grinder", "Programmable", "12 Cup Capacity"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 9,
+      "name": "Memory Foam Pillow Set",
+      "slug": "memory-foam-pillow-set",
+      "description": "Orthopedic memory foam pillows for perfect neck support. Hypoallergenic and cooling gel infused.",
+      "price": 1299,
+      "originalPrice": 1999,
+      "discount": 35,
+      "category": "Home & Kitchen",
+      "categoryId": 3,
+      "image": "https://images.unsplash.com/photo-1631679706909-1844bbd07221?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1631679706909-1844bbd07221?w=500"
+      ],
+      "rating": 4.4,
+      "reviews": 389,
+      "stock": 60,
+      "brand": "SleepWell",
+      "features": ["Memory Foam", "Cooling Gel", "Hypoallergenic"],
+      "isNew": false,
+      "isFeatured": false
+    },
+    {
+      "id": 10,
+      "name": "Professional Yoga Mat",
+      "slug": "professional-yoga-mat",
+      "description": "Extra thick non-slip yoga mat with alignment lines. Perfect for yoga, pilates, and home workouts.",
+      "price": 999,
+      "originalPrice": 1499,
+      "discount": 33,
+      "category": "Sports & Fitness",
+      "categoryId": 4,
+      "image": "https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=500"
+      ],
+      "rating": 4.6,
+      "reviews": 567,
+      "stock": 90,
+      "brand": "FitZone",
+      "features": ["Non-Slip", "Extra Thick", "Alignment Lines"],
+      "colors": ["Purple", "Blue", "Green", "Pink"],
+      "isNew": false,
+      "isFeatured": true
+    },
+    {
+      "id": 11,
+      "name": "Adjustable Dumbbell Set",
+      "slug": "adjustable-dumbbell-set",
+      "description": "Space-saving adjustable dumbbells from 5-25kg. Quick-change weight system for efficient home workouts.",
+      "price": 7999,
+      "originalPrice": 11999,
+      "discount": 33,
+      "category": "Sports & Fitness",
+      "categoryId": 4,
+      "image": "https://images.unsplash.com/photo-1638536532686-d610adfc8e5c?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1638536532686-d610adfc8e5c?w=500"
+      ],
+      "rating": 4.8,
+      "reviews": 234,
+      "stock": 20,
+      "brand": "PowerFit",
+      "features": ["5-25kg Range", "Quick Change", "Space Saving"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 12,
+      "name": "Running Shoes Pro",
+      "slug": "running-shoes-pro",
+      "description": "Lightweight running shoes with advanced cushioning technology. Breathable mesh upper for maximum comfort.",
+      "price": 2499,
+      "originalPrice": 3999,
+      "discount": 38,
+      "category": "Sports & Fitness",
+      "categoryId": 4,
+      "image": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500",
+        "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=500"
+      ],
+      "rating": 4.5,
+      "reviews": 890,
+      "stock": 75,
+      "brand": "SpeedRunner",
+      "features": ["Lightweight", "Cushioned Sole", "Breathable"],
+      "sizes": ["6", "7", "8", "9", "10", "11", "12"],
+      "colors": ["Red", "Black", "White", "Blue"],
+      "isNew": false,
+      "isFeatured": true
+    },
+    {
+      "id": 13,
+      "name": "Anti-Aging Skincare Set",
+      "slug": "anti-aging-skincare-set",
+      "description": "Complete anti-aging routine with serum, moisturizer, and eye cream. Contains retinol and vitamin C.",
+      "price": 2999,
+      "originalPrice": 4499,
+      "discount": 33,
+      "category": "Beauty & Health",
+      "categoryId": 5,
+      "image": "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500"
+      ],
+      "rating": 4.7,
+      "reviews": 456,
+      "stock": 45,
+      "brand": "GlowSkin",
+      "features": ["Retinol Formula", "Vitamin C", "Complete Set"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 14,
+      "name": "Professional Hair Dryer",
+      "slug": "professional-hair-dryer",
+      "description": "Salon-quality hair dryer with ionic technology. Multiple heat settings and cool shot button.",
+      "price": 1999,
+      "originalPrice": 2999,
+      "discount": 33,
+      "category": "Beauty & Health",
+      "categoryId": 5,
+      "image": "https://images.unsplash.com/photo-1522338140262-f46f5913618a?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1522338140262-f46f5913618a?w=500"
+      ],
+      "rating": 4.4,
+      "reviews": 234,
+      "stock": 55,
+      "brand": "StylePro",
+      "features": ["Ionic Technology", "Multiple Settings", "Lightweight"],
+      "isNew": false,
+      "isFeatured": false
+    },
+    {
+      "id": 15,
+      "name": "Natural Perfume Collection",
+      "slug": "natural-perfume-collection",
+      "description": "Set of 3 premium natural perfumes with long-lasting fragrance. Alcohol-free and skin-friendly.",
+      "price": 1799,
+      "originalPrice": 2499,
+      "discount": 28,
+      "category": "Beauty & Health",
+      "categoryId": 5,
+      "image": "https://images.unsplash.com/photo-1541643600914-78b084683601?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1541643600914-78b084683601?w=500"
+      ],
+      "rating": 4.5,
+      "reviews": 178,
+      "stock": 40,
+      "brand": "AromaBliss",
+      "features": ["Natural Ingredients", "Long Lasting", "3 Fragrances"],
+      "isNew": true,
+      "isFeatured": false
+    },
+    {
+      "id": 16,
+      "name": "JavaScript: The Good Parts",
+      "slug": "javascript-the-good-parts",
+      "description": "Essential guide to JavaScript programming by Douglas Crockford. Learn the best practices and patterns.",
+      "price": 499,
+      "originalPrice": 699,
+      "discount": 29,
+      "category": "Books",
+      "categoryId": 6,
+      "image": "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=500"
+      ],
+      "rating": 4.8,
+      "reviews": 1234,
+      "stock": 200,
+      "brand": "O'Reilly",
+      "features": ["Paperback", "176 Pages", "Bestseller"],
+      "isNew": false,
+      "isFeatured": true
+    },
+    {
+      "id": 17,
+      "name": "Clean Code Handbook",
+      "slug": "clean-code-handbook",
+      "description": "A handbook of agile software craftsmanship by Robert C. Martin. Master the art of writing clean code.",
+      "price": 599,
+      "originalPrice": 899,
+      "discount": 33,
+      "category": "Books",
+      "categoryId": 6,
+      "image": "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=500"
+      ],
+      "rating": 4.9,
+      "reviews": 2345,
+      "stock": 180,
+      "brand": "Prentice Hall",
+      "features": ["Paperback", "464 Pages", "Top Rated"],
+      "isNew": false,
+      "isFeatured": true
+    },
+    {
+      "id": 18,
+      "name": "Wireless Earbuds Pro",
+      "slug": "wireless-earbuds-pro",
+      "description": "True wireless earbuds with premium sound quality, touch controls, and 24-hour battery with case.",
+      "price": 1999,
+      "originalPrice": 3499,
+      "discount": 43,
+      "category": "Electronics",
+      "categoryId": 1,
+      "image": "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500"
+      ],
+      "rating": 4.6,
+      "reviews": 678,
+      "stock": 65,
+      "brand": "SoundMax",
+      "features": ["Touch Controls", "24hr Battery", "Noise Isolation"],
+      "isNew": true,
+      "isFeatured": true
+    },
+    {
+      "id": 19,
+      "name": "Decorative Table Lamp",
+      "slug": "decorative-table-lamp",
+      "description": "Modern decorative lamp with touch dimmer and USB charging port. Perfect for bedroom or office.",
+      "price": 1299,
+      "originalPrice": 1799,
+      "discount": 28,
+      "category": "Home & Kitchen",
+      "categoryId": 3,
+      "image": "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=500"
+      ],
+      "rating": 4.3,
+      "reviews": 145,
+      "stock": 35,
+      "brand": "HomeLux",
+      "features": ["Touch Dimmer", "USB Port", "Modern Design"],
+      "colors": ["Gold", "Silver", "Black"],
+      "isNew": false,
+      "isFeatured": false
+    },
+    {
+      "id": 20,
+      "name": "Resistance Band Set",
+      "slug": "resistance-band-set",
+      "description": "Complete set of 5 resistance bands with different strength levels. Includes door anchor and handles.",
+      "price": 699,
+      "originalPrice": 999,
+      "discount": 30,
+      "category": "Sports & Fitness",
+      "categoryId": 4,
+      "image": "https://images.unsplash.com/photo-1598289431512-b97b0917affc?w=500",
+      "images": [
+        "https://images.unsplash.com/photo-1598289431512-b97b0917affc?w=500"
+      ],
+      "rating": 4.5,
+      "reviews": 567,
+      "stock": 120,
+      "brand": "FitZone",
+      "features": ["5 Resistance Levels", "Door Anchor", "Portable"],
+      "colors": ["Multi-Color"],
+      "isNew": false,
+      "isFeatured": false
+    }
+  ]
+}

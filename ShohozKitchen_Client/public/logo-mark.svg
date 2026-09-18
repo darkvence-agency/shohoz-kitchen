@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Shohoz Kitchen">
+  <circle cx="24" cy="24" r="24" fill="#f15a24"/>
+  <!-- steam: two thin curls -->
+  <g fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".95">
+    <path d="M20.2 16.1c-1.5-1.1-1.5-2.6 0-3.7s1.5-2.6 0-3.7"/>
+    <path d="M27.8 16.1c-1.5-1.1-1.5-2.6 0-3.7s1.5-2.6 0-3.7"/>
+  </g>
+  <!-- knob -->
+  <rect x="22.4" y="17.6" width="3.2" height="2.2" rx="1.1" fill="#ffffff"/>
+  <!-- lid: overhangs the body, so it reads as lid + handles in one shape -->
+  <rect x="12" y="20.4" width="24" height="3.2" rx="1.6" fill="#ffffff"/>
+  <!-- body: tapered, softly rounded base -->
+  <path d="M14.8 24.7h18.4l-1.35 9.1a3.4 3.4 0 0 1-3.36 2.9h-9a3.4 3.4 0 0 1-3.36-2.9z" fill="#ffffff"/>
+</svg>

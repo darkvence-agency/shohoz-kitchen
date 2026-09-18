@@ -1,0 +1,30 @@
+# ── Shohoz Kitchen monorepo ──
+# Each app keeps its own .gitignore too; this file covers the repo root and
+# anything that must never reach a public repository.
+
+# Dependencies & build output (any depth)
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# Secrets — only the .env.example templates are committed
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Client material kept out of the public repo:
+# the requirement screenshots show real customers', investors' names and phone numbers.
+/Admin Dashboard/
+/ADMIN-GAP-BRIEF.md
+/*.png
+/*.jpg
+/*.jpeg

@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sideBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="100%" stop-color="#DC2626"/>
+    </linearGradient>
+    <linearGradient id="textGloss" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="400" fill="url(#sideBg)"/>
+
+  <!-- Decorative glow blob -->
+  <circle cx="780" cy="320" r="220" fill="#EF4444" opacity="0.12" filter="url(#glow)"/>
+  <circle cx="120" cy="80" r="120" fill="#4F46E5" opacity="0.15" filter="url(#glow)"/>
+
+  <!-- Sparkle dots -->
+  <g fill="#FBBF24" opacity="0.85">
+    <circle cx="650" cy="60" r="3"/>
+    <circle cx="720" cy="100" r="2"/>
+    <circle cx="800" cy="70" r="2.5"/>
+    <circle cx="850" cy="140" r="2"/>
+    <circle cx="70" cy="200" r="2"/>
+    <circle cx="40" cy="280" r="2.5"/>
+  </g>
+
+  <!-- Eyebrow chip -->
+  <g transform="translate(50, 50)">
+    <rect x="0" y="0" rx="18" ry="18" width="220" height="34" fill="#FFFFFF" opacity="0.12"/>
+    <circle cx="18" cy="17" r="4" fill="#EF4444">
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <text x="32" y="23" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" letter-spacing="2.5">
+      FEATURED COLLECTION
+    </text>
+  </g>
+
+  <!-- Main title — MEGA SALE -->
+  <g transform="translate(50, 120)">
+    <text font-family="'Segoe UI', Arial, sans-serif" font-size="68" font-weight="900" letter-spacing="-1" fill="#FFFFFF">
+      MEGA
+    </text>
+    <text y="62" font-family="'Segoe UI', Arial, sans-serif" font-size="68" font-weight="900" letter-spacing="-1" fill="url(#redGradient)">
+      SALE
+    </text>
+    <!-- Subtle gloss on top of text -->
+    <rect x="0" y="-50" width="280" height="38" fill="url(#textGloss)" pointer-events="none"/>
+  </g>
+
+  <!-- Discount tag -->
+  <g transform="translate(50, 260)">
+    <text font-family="'Segoe UI', Arial, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF" opacity="0.85">
+      Up to
+    </text>
+    <text x="80" font-family="'Segoe UI', Arial, sans-serif" font-size="36" font-weight="900" fill="#FBBF24" letter-spacing="-1">
+      50% OFF
+    </text>
+    <text y="32" font-family="'Segoe UI', Arial, sans-serif" font-size="14" font-weight="500" fill="#CBD5E1">
+      on selected items — limited time
+    </text>
+  </g>
+
+  <!-- CTA Button -->
+  <g transform="translate(50, 330)">
+    <rect x="0" y="0" rx="14" ry="14" width="170" height="48" fill="#FFFFFF"/>
+    <text x="85" y="32" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="15" font-weight="800" fill="#0F172A" letter-spacing="0.5">
+      Shop Sale  →
+    </text>
+  </g>
+
+  <!-- Right side — gift box illustration -->
+  <g transform="translate(560, 110)">
+    <!-- Box shadow -->
+    <ellipse cx="130" cy="240" rx="100" ry="14" fill="#000000" opacity="0.35"/>
+
+    <!-- Box body -->
+    <rect x="40" y="100" width="180" height="130" rx="10" fill="url(#redGradient)"/>
+    <!-- Box lid -->
+    <rect x="30" y="85" width="200" height="35" rx="8" fill="#DC2626"/>
+    <!-- Vertical ribbon -->
+    <rect x="120" y="85" width="20" height="145" fill="#FBBF24"/>
+    <!-- Horizontal ribbon -->
+    <rect x="30" y="148" width="200" height="20" fill="#FBBF24"/>
+    <!-- Ribbon bow (left) -->
+    <ellipse cx="100" cy="80" rx="32" ry="22" fill="#FBBF24"/>
+    <ellipse cx="100" cy="80" rx="14" ry="10" fill="#F59E0B"/>
+    <!-- Ribbon bow (right) -->
+    <ellipse cx="160" cy="80" rx="32" ry="22" fill="#FBBF24"/>
+    <ellipse cx="160" cy="80" rx="14" ry="10" fill="#F59E0B"/>
+    <!-- Bow center knot -->
+    <rect x="120" y="65" width="20" height="30" rx="4" fill="#F59E0B"/>
+
+    <!-- Sparkle stars around the gift -->
+    <g fill="#FBBF24">
+      <polygon points="10,20 13,28 21,28 14,33 17,41 10,36 3,41 6,33 -1,28 7,28"/>
+      <polygon transform="translate(240,40)" points="0,0 4,10 14,10 5,16 9,26 0,20 -9,26 -5,16 -14,10 -4,10"/>
+      <polygon transform="translate(20,240) scale(0.7)" points="0,0 3,8 11,8 4,13 7,21 0,16 -7,21 -4,13 -11,8 -3,8"/>
+    </g>
+  </g>
+</svg>
