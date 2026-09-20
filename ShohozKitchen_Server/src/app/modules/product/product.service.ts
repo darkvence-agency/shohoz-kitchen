@@ -3,6 +3,54 @@ import { Category } from '../category/category.model';
 import AppError from '../../utils/AppError';
 import QueryBuilder from '../../utils/QueryBuilder';
 import { bulkUploadValidation } from './product.validation';
+import { logStockMovements } from '../inventory/inventory.ledger';
+
+// costPrice is the moving-average purchase cost kept by Inventory — staff-only data.
+// Public product responses never include it.
+const HIDE_COST = '-costPrice';
+
+/**
+ * A `?fields=` projection that can never reveal costPrice. Inclusion lists simply lose
+ * the costPrice token; exclusion lists (and the default) also exclude it.
+ */
+function publicFields(raw: unknown): string {
+    const tokens = String(typeof raw === 'string' ? raw : '')
+        .split(/[,\s]+/)
+        .map((t) => t.trim())
+        .filter((t) => t && !/^[+-]?costPrice$/i.test(t));
+    if (tokens.length === 0) return `-__v,${HIDE_COST}`;
+    const exclusion = tokens.every((t) => t.startsWith('-'));
+    return exclusion ? [...tokens, HIDE_COST].join(',') : tokens.join(',');
+}
+
+/**
+ * Hiding costPrice from the projection is not enough: every other query key becomes a
+ * Mongo filter (QueryBuilder.filter) and `sort` is passed through, so a shopper could
+ * binary-search it (?costPrice[$lte]=N) or rank by it (?sort=-costPrice). Drop any key
+ * that mentions costPrice, any top-level operator ($or / $expr / $where …, which could
+ * reach it indirectly), and costPrice from the sort.
+ */
+function stripCostQuery(query: Record<string, unknown>) {
+    const mentionsCost = (v: unknown) => {
+        try {
+            return /costprice/i.test(JSON.stringify(v) ?? '');
+        } catch {
+            return true;
+        }
+    };
+    for (const key of Object.keys(query)) {
+        if (key === 'sort' || key === 'fields') continue;
+        if (key.startsWith('$') || /costprice/i.test(key) || mentionsCost(query[key])) delete query[key];
+    }
+    if (query.sort !== undefined) {
+        const sort = String(typeof query.sort === 'string' ? query.sort : '')
+            .split(/[,\s]+/)
+            .filter((t) => t && !/costprice/i.test(t))
+            .join(',');
+        if (sort) query.sort = sort;
+        else delete query.sort;
+    }
+}
 
 // Per-row product shape (one entry of bulkUploadValidation.body.products) — used to
 // validate each bulk row individually so one bad row doesn't abort the whole batch.
@@ -16,7 +64,15 @@ function escapeRegex(str: string): string {
 
 const ProductService = {
     // ── Get all products (public, with full filtering) ──────────────────
-    async getAllProducts(query: Record<string, unknown>) {
+    // `staff` (an admin token was sent — the admin Products page uses this same endpoint)
+    // also returns drafts and cost prices; shoppers never see either.
+    async getAllProducts(query: Record<string, unknown>, opts: { staff?: boolean } = {}) {
+        const staff = Boolean(opts.staff);
+        if (!staff) {
+            stripCostQuery(query);
+            query.fields = publicFields(query.fields);
+        }
+
         // (Product sourcing "country" was removed.) Drop any stale ?country= param
         // so it never leaks into the Mongoose filter.
         delete (query as Record<string, unknown>).country;
@@ -118,11 +174,17 @@ const ProductService = {
         delete query.category;
 
         // Collected extra conditions, AND-combined wherever the base filter is built.
+        // Drafts (e.g. products quick-added from Inventory with a placeholder image) stay
+        // off the storefront until they are finished and published. Kept inside $and so a
+        // shopper's own ?status=draft can only narrow the result, never widen it.
+        const draftFilter: Record<string, unknown> | undefined = staff ? undefined : { status: { $ne: 'draft' } };
+
         const extraFilters: Record<string, unknown>[] = [
             brandFilter,
             ratingFilter,
             stockFilter,
             categoryFilter,
+            draftFilter,
         ].filter(Boolean) as Record<string, unknown>[];
         const extraFilterMerge: Record<string, unknown> =
             extraFilters.length > 0 ? { $and: extraFilters } : {};
@@ -200,6 +262,7 @@ const ProductService = {
             const limit = Number(query?.limit) || 10;
             const skip = (page - 1) * limit;
             productQuery.modelQuery = productQuery.modelQuery.sort(sort).skip(skip).limit(limit);
+            if (!staff) productQuery.modelQuery = productQuery.modelQuery.select(HIDE_COST);
         }
 
         const products = await productQuery.modelQuery;
@@ -210,6 +273,7 @@ const ProductService = {
     // ── Get single product ──────────────────────────────────────────────
     async getProductById(id: string) {
         const product = await Product.findOne({ _id: id, isDeleted: { $ne: true } })
+            .select(HIDE_COST)
             .populate('category', 'name slug')
             .populate('subCategory', 'name slug')
             .populate('childCategory', 'name slug');
@@ -224,6 +288,7 @@ const ProductService = {
     async getProductBySlug(slug: string) {
         // Public: only approved products are reachable by slug.
         const product = await Product.findOne({ slug, isDeleted: { $ne: true }, approvalStatus: { $nin: ['pending', 'rejected'] } })
+            .select(HIDE_COST)
             .populate('category', 'name slug')
             .populate('subCategory', 'name slug')
             .populate('childCategory', 'name slug');
@@ -248,6 +313,7 @@ const ProductService = {
                 isDeleted: false,
                 approvalStatus: { $nin: ['pending', 'rejected'] },
                 visibility: { $ne: 'hidden' },
+                status: { $ne: 'draft' },
                 name: nameRegex,
             })
                 .select('_id name slug thumbnail price discount')
@@ -359,7 +425,9 @@ const ProductService = {
         }
     },
 
-    async createProduct(payload: any) {
+    // opts.actorId → recorded as "by" on the opening stock movement.
+    // opts.skipOpeningMovement → the caller (Inventory quick-add) writes its own.
+    async createProduct(payload: any, opts: { actorId?: string; skipOpeningMovement?: boolean } = {}) {
         payload.slug = await this._uniqueSlug(payload.slug, payload.name);
         await this._resolveCategoryLineage(payload);
         // Admin products are auto-approved and go live immediately.
@@ -370,25 +438,87 @@ const ProductService = {
         if (payload.subCategory) await Category.findByIdAndUpdate(payload.subCategory, { $inc: { productCount: 1 } });
         if (payload.childCategory) await Category.findByIdAndUpdate(payload.childCategory, { $inc: { productCount: 1 } });
 
+        // Stock ledger: the starting stock (fire-and-forget).
+        if (!opts.skipOpeningMovement && Number(product.stock) > 0) {
+            logStockMovements([{
+                product: product._id,
+                type: 'opening',
+                quantity: Number(product.stock),
+                balanceAfter: Number(product.stock),
+                unitCost: Number(product.costPrice) > 0 ? Number(product.costPrice) : null,
+                note: 'Opening stock — product created',
+                createdBy: opts.actorId,
+            }]);
+        }
+
         return product;
     },
 
     // ── Update product ──────────────────────────────────────────────────
-    async updateProduct(id: string, payload: any) {
+    // Stock also changes through Inventory and orders while the product form is open, so:
+    //  • the form sends `stock` only when the admin changed it, with `expectedStock` (the
+    //    count it loaded) — if the stock has moved since, the save is refused (409);
+    //  • a variant sent without `stock` keeps its current stock.
+    // The write is compare-and-set on the stock values it read, so a sale landing between
+    // the read and the write is never overwritten either.
+    async updateProduct(id: string, payload: any, actorId?: string) {
         // Remove discount from payload — it's auto-calculated in pre-save
         delete payload.discount;
+        const expectedStock = typeof payload.expectedStock === 'number' ? payload.expectedStock : undefined;
+        delete payload.expectedStock;
         if (payload.category !== undefined || payload.subCategory !== undefined || payload.childCategory !== undefined) {
             await this._resolveCategoryLineage(payload);
         }
-        const product = await Product.findOneAndUpdate(
-            { _id: id, isDeleted: false },
-            payload,
-            { new: true, runValidators: true }
-        )
-            .populate('category', 'name slug')
-            .populate('subCategory', 'name slug')
-            .populate('childCategory', 'name slug');
-        if (!product) throw new AppError(404, 'Product not found');
+
+        const eqOrMissing = (v: unknown) => (v === undefined || v === null ? { $in: [null, 0] } : v);
+        let before: any = null;
+        let product: any = null;
+        for (let attempt = 0; attempt < 5 && !product; attempt++) {
+            before = await Product.findOne({ _id: id, isDeleted: false }).select('stock variants._id variants.stock').lean();
+            if (!before) throw new AppError(404, 'Product not found');
+
+            const update = { ...payload };
+            const filter: Record<string, unknown> = { _id: id, isDeleted: false };
+            if (update.stock !== undefined) {
+                if (expectedStock !== undefined && Number(before.stock || 0) !== expectedStock) {
+                    throw new AppError(409, `The stock changed since you opened this product (it is now ${Number(before.stock || 0)}). Reload the page to see it, or change stock from Inventory.`);
+                }
+                filter.stock = eqOrMissing(before.stock);
+            }
+            if (Array.isArray(update.variants)) {
+                const current = new Map<string, any>((before.variants || []).map((v: any) => [String(v._id), v]));
+                const guards: Record<string, unknown>[] = [];
+                update.variants = update.variants.map((v: any) => {
+                    const cur = v && typeof v.stock !== 'number' && v._id ? current.get(String(v._id)) : null;
+                    if (!cur) return v;
+                    guards.push({ variants: { $elemMatch: { _id: cur._id, stock: eqOrMissing(cur.stock) } } });
+                    return { ...v, stock: Number(cur.stock || 0) };
+                });
+                if (guards.length) filter.$and = guards;
+            }
+
+            product = await Product.findOneAndUpdate(filter, update, { new: true, runValidators: true })
+                .populate('category', 'name slug')
+                .populate('subCategory', 'name slug')
+                .populate('childCategory', 'name slug');
+            // No match = the stock moved between the read and the write — read again.
+        }
+        if (!product) throw new AppError(409, 'The stock changed while saving — please try again');
+
+        if (payload.stock !== undefined) {
+            const delta = Number(product.stock || 0) - Number(before.stock || 0);
+            if (delta !== 0) {
+                logStockMovements([{
+                    product: product._id,
+                    type: 'adjustment',
+                    quantity: delta,
+                    balanceAfter: Number(product.stock || 0),
+                    unitCost: Number(product.costPrice) > 0 ? Number(product.costPrice) : null,
+                    note: 'Stock changed on the product form',
+                    createdBy: actorId,
+                }]);
+            }
+        }
         return product;
     },
 
@@ -420,7 +550,7 @@ const ProductService = {
     // ── Bulk create / upload ─────────────────────────────────────────────
     // Validates each row independently; valid rows are inserted, invalid rows are
     // skipped and reported. Never aborts the whole batch for one bad row.
-    async bulkCreate(items: any[]) {
+    async bulkCreate(items: any[], actorId?: string) {
         let created = 0;
         const failed: { index: number; error: string }[] = [];
 
@@ -439,11 +569,24 @@ const ProductService = {
                 await this._resolveCategoryLineage(payload);
                 // Use create() (not insertMany) so pre-save hooks run per row
                 // (slug, sku, discount, variant labels) — same as single create.
-                await Product.create(payload);
+                const doc = await Product.create(payload);
                 if (payload.category) await Category.findByIdAndUpdate(payload.category, { $inc: { productCount: 1 } });
                 if (payload.subCategory) await Category.findByIdAndUpdate(payload.subCategory, { $inc: { productCount: 1 } });
                 if (payload.childCategory) await Category.findByIdAndUpdate(payload.childCategory, { $inc: { productCount: 1 } });
                 created++;
+
+                // Stock ledger: the starting stock (fire-and-forget).
+                if (Number(doc.stock) > 0) {
+                    logStockMovements([{
+                        product: doc._id,
+                        type: 'opening',
+                        quantity: Number(doc.stock),
+                        balanceAfter: Number(doc.stock),
+                        unitCost: Number(doc.costPrice) > 0 ? Number(doc.costPrice) : null,
+                        note: 'Opening stock — bulk upload',
+                        createdBy: actorId,
+                    }]);
+                }
             } catch (err: any) {
                 failed.push({ index, error: err?.message || 'Failed to create product' });
             }
@@ -466,6 +609,7 @@ const ProductService = {
     // ── Featured products (top selling active products) ─────────────────
     async getFeaturedProducts(limit = 8) {
         return await Product.find({ isDeleted: false, status: 'active', approvalStatus: { $nin: ['pending', 'rejected'] } })
+            .select(HIDE_COST)
             .populate('category', 'name slug')
             .sort({ totalSold: -1 })
             .limit(limit);
@@ -487,10 +631,10 @@ const ProductService = {
             ];
         }
         let products = await Product.find(filter)
+            .select(HIDE_COST)
             .populate('category', 'name slug')
             .populate('subCategory', 'name slug')
             .populate('childCategory', 'name slug')
-            
             .sort({ rating: -1 })
             .limit(limit);
 
@@ -501,10 +645,10 @@ const ProductService = {
                 status: 'active',
                 approvalStatus: { $nin: ['pending', 'rejected'] },
             })
+                .select(HIDE_COST)
                 .populate('category', 'name slug')
                 .populate('subCategory', 'name slug')
                 .populate('childCategory', 'name slug')
-                
                 .sort({ totalSold: -1, rating: -1 })
                 .limit(limit);
         }
@@ -521,7 +665,7 @@ const ProductService = {
             id,
             { $inc: { [field]: 1 } },
             { new: true }
-        );
+        ).select(HIDE_COST); // public endpoint
         if (!product) throw new AppError(404, 'Product not found');
         return product;
     },

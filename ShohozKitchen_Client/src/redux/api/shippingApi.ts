@@ -8,10 +8,14 @@ export interface ShippingQuote {
     freeReason: 'product' | 'coupon' | 'threshold' | 'quantity' | null;
 }
 
+/** Inside / Outside Dhaka, picked at checkout → the flat charge from Settings. */
+export type DeliveryArea = 'inside_dhaka' | 'outside_dhaka';
+
 interface ShippingQuoteArgs {
     city?: string;
     subtotal?: number;
     zoneId?: string;
+    area?: DeliveryArea;
 }
 
 // One option in the checkout "Delivery Area" dropdown.
@@ -32,19 +36,27 @@ export interface ShippingSettings {
     defaultEstimatedDays: string;
     quantityFreeShippingEnabled: boolean;
     minItemsForFreeShipping: number;
+    /**
+     * Courier COD handling charge in integer basis points (100 = 1%, range 0–10000).
+     * Copied onto each package when it is booked, so changing it only affects
+     * parcels booked afterwards. Edited on Settings → Business.
+     */
+    codChargeBps: number;
+    updatedAt?: string;
 }
 
 export const shippingApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         // Public: get a shipping quote — Backend route: GET /api/shipping/quote
         getShippingQuote: builder.query<ShippingQuote, ShippingQuoteArgs>({
-            query: ({ city, subtotal, zoneId } = {}) => ({
+            query: ({ city, subtotal, zoneId, area } = {}) => ({
                 url: '/shipping/quote',
                 method: 'GET',
                 params: {
                     ...(city ? { city } : {}),
                     ...(subtotal != null ? { subtotal } : {}),
                     ...(zoneId ? { zoneId } : {}),
+                    ...(area ? { area } : {}),
                 },
             }),
             // Unwrap { statusCode, success, message, data } → data and coerce types

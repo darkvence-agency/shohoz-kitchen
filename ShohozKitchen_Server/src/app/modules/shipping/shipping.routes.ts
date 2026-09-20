@@ -1,6 +1,8 @@
 import express from 'express';
 import { authMiddleware, authorizeRoles } from '../../middlewares/auth';
+import validateRequest from '../../middlewares/validateRequest';
 import ShippingController from './shipping.controller';
+import { updateShippingSettingsValidation } from './shipping.validation';
 
 const router = express.Router();
 
@@ -14,8 +16,9 @@ router.get('/delivery-zones', ShippingController.getDeliveryZones);
 // All shipping routes below require admin auth
 router.use(authMiddleware, authorizeRoles('admin'));
 
-// Settings (admin update)
-router.patch('/settings', ShippingController.updateSettings);
+// Settings (admin update) — delivery charges, free-delivery rules, courier COD charge.
+// Edited from both Settings (Business) and Shipping & Zones → Settings.
+router.patch('/settings', validateRequest(updateShippingSettingsValidation), ShippingController.updateSettings);
 
 // Zones
 router.get('/zones', ShippingController.getZones);

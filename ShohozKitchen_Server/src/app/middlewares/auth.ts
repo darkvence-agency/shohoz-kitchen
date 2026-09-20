@@ -10,7 +10,7 @@ declare global {
             user?: JwtPayload & {
                 userId: string;
                 email: string;
-                role: 'superadmin' | 'admin' | 'user';
+                role: 'superadmin' | 'admin' | 'editor' | 'user';
             };
         }
     }
@@ -33,7 +33,7 @@ export const authMiddleware = async (
         const decoded = jwt.verify(token, config.jwt.access_secret) as JwtPayload & {
             userId: string;
             email: string;
-            role: 'superadmin' | 'admin' | 'user';
+            role: 'superadmin' | 'admin' | 'editor' | 'user';
         };
 
         const user = await User.findById(decoded.userId);
@@ -48,7 +48,7 @@ export const authMiddleware = async (
     }
 };
 
-export const authorizeRoles = (...allowedRoles: ('superadmin' | 'admin' | 'user')[]) => {
+export const authorizeRoles = (...allowedRoles: ('superadmin' | 'admin' | 'editor' | 'user')[]) => {
     return (req: Request, res: Response, next: NextFunction): void => {
         // Superadmin is a superset of admin — it is always allowed on admin-scoped
         // routes (so the super admin panel's API calls don't 403).
@@ -103,7 +103,7 @@ export const optionalAuth = async (
                     const decoded = jwt.verify(token, config.jwt.access_secret) as JwtPayload & {
                         userId: string;
                         email: string;
-                        role: 'superadmin' | 'admin' | 'user';
+                        role: 'superadmin' | 'admin' | 'editor' | 'user';
                     };
                     req.user = decoded;
                 } catch {

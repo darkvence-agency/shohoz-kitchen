@@ -7,7 +7,85 @@ import { Coupon } from '../coupon/coupon.model';
 import AppError from '../../utils/AppError';
 import QueryBuilder from '../../utils/QueryBuilder';
 import { notifyOrderToWhatsApp } from '../../utils/whatsappNotify';
-import { computeShippingCost } from '../shipping/shipping.service';
+import { computeShippingCost, isDeliveryArea } from '../shipping/shipping.service';
+import { logStockMovements, variantOf, StockMovementInput } from '../inventory/inventory.ledger';
+
+// ── Stock ledger (Inventory → Movements) ────────────────────────
+// Every place below that changes product.stock also logs a ledger row, AFTER the stock
+// change succeeded, fire-and-forget: bookkeeping can never break an order flow.
+
+/**
+ * The variant an order line was bought as: the first variant whose colour and size agree
+ * (case-insensitive) — the same match checkout uses for the price.
+ */
+function matchVariant(variants: any[] | undefined, color?: string, size?: string): any | null {
+    if (!color && !size) return null;
+    const same = (a: unknown, b: unknown) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+    return (variants || []).find((v: any) => (!color || same(v.color, color)) && (!size || same(v.size, size))) || null;
+}
+
+/**
+ * A stock $inc for a product and, when the line was a variant, that variant too — so the
+ * variant counts (shown on the storefront and in Inventory) move with the sellable total.
+ */
+function stockInc(delta: number, variantId: unknown, extra: Record<string, number> = {}) {
+    const inc: Record<string, number> = { stock: delta, ...extra };
+    if (!variantId) return { update: { $inc: inc }, options: {} as Record<string, unknown> };
+    inc['variants.$[line].stock'] = delta;
+    return { update: { $inc: inc }, options: { arrayFilters: [{ 'line._id': variantId }] } as Record<string, unknown> };
+}
+
+/** Put an order line's quantity back into stock; returns the product's stock + cost after. */
+async function restockLine(item: any) {
+    let variantId: unknown = null;
+    if (item.color || item.size) {
+        const p: any = await Product.findById(item.product).select('variants._id variants.color variants.size').lean();
+        variantId = matchVariant(p?.variants, item.color, item.size)?._id || null;
+    }
+    const { update, options } = stockInc(item.quantity, variantId);
+    return Product.findByIdAndUpdate(item.product, update, { ...options, new: true })
+        .select('stock costPrice')
+        .lean();
+}
+
+/** Ledger row for stock that came back from an order line (cancel / return). */
+function restockEntry(order: any, item: any, after: any, type: 'cancel' | 'return', note: string, createdBy?: string): StockMovementInput | null {
+    if (!after) return null;
+    return {
+        product: item.product,
+        type,
+        quantity: Number(item.quantity) || 0,
+        balanceAfter: Number(after.stock) || 0,
+        variant: variantOf(item),
+        unitCost: Number(after.costPrice) > 0 ? Number(after.costPrice) : null,
+        note,
+        order: order?._id,
+        createdBy: createdBy || null,
+    };
+}
+
+function logRestock(entries: (StockMovementInput | null)[]) {
+    try {
+        logStockMovements(entries.filter(Boolean) as StockMovementInput[]);
+    } catch {
+        // never block the order flow
+    }
+}
+
+/**
+ * Fraud check: once an order closes (cancelled, delivered, returned…) its flag, if it is
+ * still waiting for review, is closed too. Awaited, so the admin's refetch right after
+ * sees it, but it never throws and does nothing for open statuses. Lazy require avoids
+ * a circular import (fraud.service uses OrderService to cancel).
+ */
+async function closeFraudFlag(orderId: unknown, status: string, actorId?: string) {
+    try {
+        const { default: FraudService } = require('../fraud/fraud.service');
+        await FraudService.closeForOrder(orderId, status, actorId);
+    } catch {
+        // never block the order flow
+    }
+}
 
 // ── Status helpers ──────────────────────────────────────────────
 const STATUS_ORDER = ['pending', 'confirmed', 'processing', 'shipped', 'on_the_way', 'out_for_delivery', 'delivery_attempt', 'delivered'];
@@ -97,7 +175,7 @@ const OrderService = {
     },
 
     async createOrder(userId: string, payload: any) {
-        const { items, shippingAddress, paymentMethod, paymentDetails, couponCode, note, zoneId } = payload;
+        const { items, shippingAddress, paymentMethod, paymentDetails, couponCode, note, zoneId, deliveryArea } = payload;
 
         // Get product details and calculate totals
         let subtotal = 0;
@@ -245,6 +323,7 @@ const OrderService = {
             totalQuantity: orderItems.reduce((n: number, oi: any) => n + (oi.quantity || 0), 0),
             couponFreeShipping,
             zoneId,
+            area: isDeliveryArea(deliveryArea) ? deliveryArea : undefined,
         });
         const total = Math.max(0, subtotal - discount) + shippingCost;
 
@@ -254,24 +333,37 @@ const OrderService = {
         //    A conditional decrement ({ stock: $gte qty }) is serialized by MongoDB, so
         //    each unit is sold at most once. On any shortfall we roll back what we already
         //    reserved and fail the whole order. ──
-        const reserved: { product: any; quantity: number }[] = [];
+        const reserved: { product: any; variantId: unknown; quantity: number; balanceAfter: number; unitCost: number; color: string; size: string }[] = [];
         const rollbackReserved = async () => {
             for (const r of reserved) {
-                await Product.findByIdAndUpdate(r.product, {
-                    $inc: { stock: r.quantity, totalSold: -r.quantity },
-                });
+                const { update, options } = stockInc(r.quantity, r.variantId, { totalSold: -r.quantity });
+                await Product.findByIdAndUpdate(r.product, update, options);
             }
         };
-        for (const oi of orderItems) {
+        for (const [idx, oi] of orderItems.entries()) {
+            // orderItems were built from stagedItems in the same order.
+            const variantId = matchVariant(stagedItems[idx]?.product?.variants, oi.color, oi.size)?._id || null;
+            const { update, options } = stockInc(-oi.quantity, variantId, { totalSold: oi.quantity });
             const claimed = await Product.findOneAndUpdate(
                 { _id: oi.product, isDeleted: false, status: 'active', stock: { $gte: oi.quantity } },
-                { $inc: { stock: -oi.quantity, totalSold: oi.quantity } }
+                update,
+                options,
             );
             if (!claimed) {
                 await rollbackReserved();
                 throw new AppError(400, `Insufficient stock for "${oi.name}". Please review your cart and try again.`);
             }
-            reserved.push({ product: oi.product, quantity: oi.quantity });
+            reserved.push({
+                product: oi.product,
+                variantId,
+                quantity: oi.quantity,
+                // For the stock ledger: `claimed` is the document from just before this atomic
+                // decrement, so the balance after is exactly its stock minus the quantity.
+                balanceAfter: Number((claimed as any).stock || 0) - oi.quantity,
+                unitCost: Number((claimed as any).costPrice) || 0,
+                color: oi.color,
+                size: oi.size,
+            });
         }
 
         // Create order (roll the reserved stock back if the order itself fails to persist).
@@ -298,6 +390,24 @@ const OrderService = {
         } catch (err) {
             await rollbackReserved();
             throw err;
+        }
+
+        // ── Stock ledger: one 'sale' row per reserved line. Logged only now that the order
+        //    exists (a rolled-back reservation never appears); fire-and-forget. ──
+        try {
+            logStockMovements(reserved.map((r) => ({
+                product: r.product,
+                type: 'sale' as const,
+                quantity: -r.quantity,
+                balanceAfter: r.balanceAfter,
+                variant: variantOf({ color: r.color, size: r.size }),
+                unitCost: r.unitCost > 0 ? r.unitCost : null, // cost of goods at the time of sale
+                note: `Order ${order.orderId || order._id}`,
+                order: order._id,
+                createdBy: userId,
+            })));
+        } catch {
+            // never block order flow
         }
 
         // Record coupon usage ATOMICALLY: enforce the global usage limit AND
@@ -375,7 +485,7 @@ const OrderService = {
 
 
                 // 2) Every admin / superadmin
-                const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } }).select('_id');
+                const admins = await User.find({ role: { $in: ['admin', 'superadmin', 'editor'] } }).select('_id'); // editors confirm orders
                 for (const admin of admins) {
                     await NotificationService.notify({
                         user: admin._id,
@@ -392,6 +502,19 @@ const OrderService = {
         } catch {
             // never block order flow
         }
+
+        // ── Fraud check: flag the order when this customer returned an order before.
+        //    Runs on the next tick, un-awaited, and never throws, so it can't block or slow
+        //    checkout. Guest and admin-created orders come through here too. Lazy require
+        //    avoids a circular import (fraud.service uses OrderService to cancel). ──
+        setImmediate(() => {
+            try {
+                const { default: FraudService } = require('../fraud/fraud.service');
+                FraudService.checkOrder(order, { notify: true }).catch(() => {});
+            } catch {
+                // never block order flow
+            }
+        });
 
         return order;
     },
@@ -507,11 +630,30 @@ const OrderService = {
         });
     },
 
-    async updateOrderStatus(id: string, status: string, note?: string) {
+    // actorId (optional) → the admin shown as "by" on the stock ledger when a cancel restocks.
+    // guard (optional) → extra conditions the order must still meet when the change is
+    // claimed (Fraud check passes "still cancellable and not booked with the courier").
+    async updateOrderStatus(id: string, status: string, note?: string, actorId?: string, guard?: Record<string, unknown>) {
         const order = await Order.findById(id);
         if (!order) throw new AppError(404, 'Order not found');
 
         const prevOrderStatus = order.status;
+        // Cancelling a still-active order puts its stock back, which must happen once only.
+        const restock = status === 'cancelled' && !['cancelled', 'returned', 'refunded'].includes(prevOrderStatus);
+
+        // Claim the change atomically first: it only goes through while the order still has
+        // the status read above (and meets the guard). If another admin, the customer or a
+        // courier booking changed it in the meantime, nothing happens and nothing is restocked twice.
+        if (restock || guard) {
+            const claimed = await Order.updateOne(
+                { _id: order._id, status: prevOrderStatus, ...(guard ? { $and: [guard] } : {}) },
+                { $set: { status } },
+            );
+            if (!claimed.matchedCount) {
+                throw new AppError(409, 'This order was changed by someone else just now. Reload it and try again');
+            }
+        }
+
         order.status = status as any;
         order.timeline.push({ status, note: note || '', createdAt: new Date() } as any);
 
@@ -532,15 +674,29 @@ const OrderService = {
             order.paymentStatus = 'refunded';
         }
 
-        // Restore product stock when an admin cancels a still-active order
-        // (mirrors the user-cancel path so inventory is not silently lost).
-        if (status === 'cancelled' && !['cancelled', 'returned', 'refunded'].includes(prevOrderStatus)) {
-            for (const item of order.items) {
-                await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
+        try {
+            await order.save();
+        } catch (err) {
+            // Undo the claim so the order is exactly as it was (nothing was restocked yet).
+            if (restock || guard) {
+                await Order.updateOne({ _id: order._id, status }, { $set: { status: prevOrderStatus } }).catch(() => {});
             }
+            throw err;
         }
 
-        await order.save();
+        // Restore product stock when an admin cancels a still-active order
+        // (mirrors the user-cancel path so inventory is not silently lost). After the save,
+        // like the user-cancel path, so a failed save can never leave stock restored twice.
+        if (restock) {
+            const ledger: (StockMovementInput | null)[] = [];
+            for (const item of order.items) {
+                const after = await restockLine(item);
+                ledger.push(restockEntry(order, item, after, 'cancel', `Order ${order.orderId || order._id} cancelled`, actorId));
+            }
+            logRestock(ledger);
+        }
+
+        await closeFraudFlag(order._id, status, actorId);
 
         // ── Notify the customer of the status change (fire-and-forget) ──
         try {
@@ -584,6 +740,7 @@ const OrderService = {
         if (order.status === 'delivered' && order.paymentMethod === 'cod' && order.paymentStatus !== 'paid') {
             order.paymentStatus = 'paid';
         }
+        if (order.status === 'delivered') await closeFraudFlag(order._id, 'delivered');
 
         // Notify the customer (fire-and-forget — never block the sync).
         try {
@@ -617,6 +774,12 @@ const OrderService = {
             throw new AppError(400, 'Order cannot be cancelled at this stage');
         }
 
+        // Claim the cancel atomically, so a cancel by an admin at the same moment can't
+        // restock the same items a second time.
+        const prevStatus = order.status;
+        const claimed = await Order.updateOne({ _id: order._id, status: prevStatus }, { $set: { status: 'cancelled' } });
+        if (!claimed.matchedCount) throw new AppError(400, 'Order cannot be cancelled at this stage');
+
         order.status = 'cancelled';
         order.timeline.push({ status: 'cancelled', note: 'Cancelled by user', createdAt: new Date() } as any);
 
@@ -627,12 +790,21 @@ const OrderService = {
             pkg.timeline.push({ status: 'cancelled', note: 'Cancelled by user', createdAt: new Date() });
         }
 
-        await order.save();
+        try {
+            await order.save();
+        } catch (err) {
+            await Order.updateOne({ _id: order._id, status: 'cancelled' }, { $set: { status: prevStatus } }).catch(() => {});
+            throw err;
+        }
+        await closeFraudFlag(order._id, 'cancelled');
 
         // Restore stock
+        const ledger: (StockMovementInput | null)[] = [];
         for (const item of order.items) {
-            await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
+            const after = await restockLine(item);
+            ledger.push(restockEntry(order, item, after, 'cancel', `Order ${order.orderId || order._id} cancelled by the customer`, userId));
         }
+        logRestock(ledger);
 
         return order;
     },
@@ -688,13 +860,16 @@ const OrderService = {
     // ════════════════════════════════════════════════════════════
 
     // Restore stock for the items in one package (used on return/refund — goods come back).
-    async _restockPackage(order: any, pkg: any) {
+    async _restockPackage(order: any, pkg: any, ledgerNote?: string) {
         const ids = new Set((pkg.itemIds || []).map((x: any) => x.toString()));
+        const ledger: (StockMovementInput | null)[] = [];
         for (const it of (order.items || [])) {
             if (ids.has(it._id.toString())) {
-                await Product.findByIdAndUpdate(it.product, { $inc: { stock: it.quantity } });
+                const after = await restockLine(it);
+                ledger.push(restockEntry(order, it, after, 'return', ledgerNote || `Order ${order.orderId || order._id} returned`));
             }
         }
+        logRestock(ledger);
     },
 
     // Mark the order's package as returned, then recompute order status.
@@ -730,7 +905,7 @@ const OrderService = {
             // return flow is approve → refund; markPackageReturned already restocked on
             // approve, so restocking again here would double-count inventory. A direct
             // refund (prev !== 'returned') still restocks.
-            if (prev !== 'returned') await this._restockPackage(order, pkg);
+            if (prev !== 'returned') await this._restockPackage(order, pkg, `Order ${order.orderId || order._id} refunded`);
             pkg.status = 'refunded';
             pkg.timeline.push({ status: 'refunded', note: note || 'Refund processed', createdAt: new Date() });
         }

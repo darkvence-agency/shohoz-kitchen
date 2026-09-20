@@ -7,6 +7,7 @@ import { FiX, FiSend, FiMessageCircle, FiPhone } from 'react-icons/fi';
 import { useRouter } from 'next/navigation';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
 import { useAppSelector } from '@/redux';
+import { resolveContactChannels } from '@/utils/contactLinks';
 
 const PRIMARY = 'var(--color-primary)';
 
@@ -27,22 +28,21 @@ const FloatingContact: React.FC = () => {
     const router = useRouter();
     const { isAuthenticated } = useAppSelector((s) => s.auth);
 
-    const f = res?.data?.floating;
     const contact = res?.data?.contact || {};
     const payment = res?.data?.payment || {};
 
-    const showWhatsapp = f?.showWhatsapp !== false; // default true
-    const digits = (f?.whatsapp || contact.whatsapp || '8801611829111').replace(/\D/g, '');
-    const whatsappNumber = digits.startsWith('880') ? digits : digits.startsWith('0') ? '88' + digits : digits ? '880' + digits : '';
-    const whatsappLink = whatsappNumber ? `https://wa.me/${whatsappNumber}` : '';
-
-    const showPhone = f?.showPhone === true;
-    const phone = f?.phone || contact.phone || '+8801611829111';
-
-    const showMessenger = f?.showMessenger === true && !!f?.messenger;
-    const messengerLink = f?.messenger ? `https://m.me/${f.messenger}` : '';
-    const email = contact.email || 'info@shohozkitchen.com';
-    const address = contact.address || 'Dhaka, Bangladesh';
+    // Call / WhatsApp / Messenger follow Contact Info unless the Floating Widget sets its
+    // own number or page (Admin → Site Content). A button hides when it has nothing valid.
+    const ch = resolveContactChannels(res?.data);
+    const showWhatsapp = ch.showWhatsapp;
+    const whatsappLink = ch.whatsappHref;
+    const showPhone = ch.showPhone;
+    const phone = ch.phone;
+    const phoneLink = ch.phoneHref;
+    const showMessenger = ch.showMessenger;
+    const messengerLink = ch.messengerHref;
+    const email = String(contact.email || '').trim();
+    const address = String(contact.corporateOffice || contact.address || '').trim();
 
     // ── Chat state ──────────────────────────────────────────────
     const [open, setOpen] = useState(false);
@@ -114,15 +114,24 @@ const FloatingContact: React.FC = () => {
                         : "📦 Please log in to track your orders — then you’ll see live status for each one.",
                     actions: [{ label: isAuthenticated ? 'Open My Orders' : 'Login to track', href: isAuthenticated ? '/dashboard/user/orders' : '/login?redirect=/dashboard/user/orders' }],
                 };
-            case 'contact':
+            case 'contact': {
+                // Only the details an admin has added (Site Content → Contact Page).
+                const lines = [
+                    phone && `• Phone: ${phone}`,
+                    email && `• Email: ${email}`,
+                    address && `• Address: ${address}`,
+                ].filter(Boolean);
                 return {
                     from: 'bot',
-                    text: `📞 We’re here to help:\n• Phone: ${phone}\n• Email: ${email}\n• Address: ${address}`,
+                    text: lines.length
+                        ? `📞 We’re here to help:\n${lines.join('\n')}`
+                        : '📞 You can send us a message from the Contact page and we’ll get back to you.',
                     actions: [
-                        ...(whatsappLink ? [{ label: 'Chat on WhatsApp', href: whatsappLink }] : []),
+                        ...(showWhatsapp && whatsappLink ? [{ label: 'Chat on WhatsApp', href: whatsappLink }] : []),
                         { label: 'Contact page', href: '/contact' },
                     ],
                 };
+            }
             default:
                 return { from: 'bot', text: "I’m here to help! Pick a topic below 👇", actions: QUICK };
         }
@@ -345,14 +354,14 @@ const FloatingContact: React.FC = () => {
                 </div>
 
                 {/* Phone Call button (if enabled) */}
-                {showPhone && phone && (
+                {showPhone && phoneLink && (
                     <div className="group relative flex items-center">
                         <div className="absolute right-full mr-2 bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 pointer-events-none transition-all duration-200 shadow-lg">
                             Call {phone}
                             <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-l-4 border-t-transparent border-b-transparent border-l-blue-600" />
                         </div>
                         <a
-                            href={`tel:${phone}`}
+                            href={phoneLink}
                             aria-label="Call support"
                             className="w-12 h-12 rounded-full flex items-center justify-center hover:scale-110 transition-all duration-200 text-white shadow-lg"
                             style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.4)' }}

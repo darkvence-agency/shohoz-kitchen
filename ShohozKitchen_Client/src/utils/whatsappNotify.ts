@@ -3,7 +3,7 @@
  * Opens wa.me in a new tab with a pre-filled message.
  */
 
-const ADMIN_WHATSAPP = '8801611829111'; // fallback — overridden by siteContent
+const ADMIN_WHATSAPP = ''; // no sample number: nothing opens until siteContent has one
 
 export function sendOrderToWhatsApp(data: {
     adminPhone?: string;
@@ -15,6 +15,7 @@ export function sendOrderToWhatsApp(data: {
     note?: string;
 }) {
     const phone = data.adminPhone || ADMIN_WHATSAPP;
+    if (!phone.replace(/[^0-9]/g, '')) return; // no WhatsApp number set yet
     const itemLines = data.items.map((item, i) =>
         `${i + 1}. ${item.name || 'Product'} × ${item.quantity}${item.color ? ` (${item.color})` : ''}${item.size ? ` [${item.size}]` : ''}${item.price ? ` — ৳${item.price}` : ''}`
     ).join('\n');
@@ -46,6 +47,7 @@ export function sendInquiryToWhatsApp(data: {
     size?: string;
 }) {
     const phone = data.adminPhone || ADMIN_WHATSAPP;
+    if (!phone.replace(/[^0-9]/g, '')) return; // no WhatsApp number set yet
     const variantInfo = [data.color, data.size].filter(Boolean).join(' / ');
 
     const msg = `❓ *New Inquiry — Shohoz Kitchen*

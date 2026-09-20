@@ -23,12 +23,13 @@ export default function NotFound() {
     const getDashboardHref = () => {
         if (!user) return '/';
         if (user.role === 'admin' || user.role === 'superadmin') return '/dashboard/admin';
+        if (user.role === 'editor') return '/dashboard/admin/orders';
         return '/dashboard/user';
     };
 
     const getDashboardLabel = () => {
         if (!user) return 'Back to Home';
-        if (user.role === 'admin' || user.role === 'superadmin') return 'Admin Dashboard';
+        if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'editor') return 'Admin Dashboard';
         return 'My Account';
     };
 

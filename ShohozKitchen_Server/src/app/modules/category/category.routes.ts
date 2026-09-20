@@ -7,7 +7,7 @@ import { createCategoryValidation, updateCategoryValidation } from './category.v
 const router = express.Router();
 
 router.get('/', CategoryController.getAll);
-router.get('/admin/all', authMiddleware, authorizeRoles('admin'), CategoryController.getAllAdmin);
+router.get('/admin/all', authMiddleware, authorizeRoles('admin', 'editor'), CategoryController.getAllAdmin);
 router.get('/:id/subcategories', CategoryController.getSubCategories);
 router.get('/:id', CategoryController.getById);
 router.post('/', authMiddleware, authorizeRoles('admin'), validateRequest(createCategoryValidation), CategoryController.create);

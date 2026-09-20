@@ -6,10 +6,11 @@ import {
     FiPhone, FiMail, FiMapPin, FiSend, FiCheckCircle,
     FiClock, FiMessageCircle, FiChevronRight,
 } from 'react-icons/fi';
-import { BsWhatsapp } from 'react-icons/bs';
+import { BsWhatsapp, BsMessenger } from 'react-icons/bs';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
 import { useCreateInquiryMutation } from '@/redux/api/inquiryApi';
 import { toast } from 'react-hot-toast';
+import { messengerHref, messengerId, telHref, whatsappHref } from '@/utils/contactLinks';
 
 /* ─── Types ─── */
 type FormState = { name: string; email: string; phone: string; subject: string; message: string };
@@ -79,59 +80,57 @@ export default function ContactClient() {
         boxShadow: focusField === name ? '0 0 0 3px rgba(79,70,229,0.08)' : 'none',
     });
 
-    /* ─── Normalize WhatsApp number to wa.me format (88 + local, digits only) ─── */
-    const waDigits = (c.whatsapp || '').replace(/\D/g, '');
-    const waNumber = waDigits.startsWith('880')
-        ? waDigits
-        : waDigits.startsWith('0')
-            ? '88' + waDigits
-            : waDigits
-                ? '880' + waDigits
-                : '';
-
-    /* ─── Contact defaults (Shohoz Kitchen) ─── */
-    const PHONE_LIST: string[] = (Array.isArray(c.phones) && c.phones.length > 0)
-        ? c.phones
-        : (c.phone ? [c.phone] : ['01611829111', '01955668133', '01624033566']);
-    const EMAIL_LIST: string[] = (Array.isArray(c.emails) && c.emails.length > 0)
-        ? c.emails
-        : (c.email ? [c.email] : ['info@shohozkitchen.com']);
-    // const WEBSITE: string = c.website || 'shohozkitchen.com';
-    const PRIMARY_PHONE = PHONE_LIST[0];
-    const PRIMARY_EMAIL = EMAIL_LIST[0];
+    /* ─── Contact details from Admin → Site Content ───
+       No sample fallbacks: a card whose detail is empty says "Not added yet" and is not
+       clickable until an admin fills it in. */
+    const clean = (list: unknown): string[] => (Array.isArray(list) ? list : []).map((v) => String(v ?? '').trim()).filter(Boolean);
+    const PHONE_LIST: string[] = clean(c.phones).length > 0 ? clean(c.phones) : clean([c.phone]);
+    const EMAIL_LIST: string[] = clean(c.emails).length > 0 ? clean(c.emails) : clean([c.email]);
+    const OFFICE: string = String(c.corporateOffice || c.address || '').trim();
+    const WAREHOUSE: string = String(c.warehouse || '').trim();
+    const NOT_ADDED = 'Not added yet';
 
     /* ─── Dynamic Data ─── */
-    const CONTACT_CARDS = [
+    const CONTACT_CARDS: { icon: React.ReactNode; label: string; primary: string; secondary: string; href: string; accent: string }[] = [
         {
             icon: <FiPhone size={22} />,
             label: 'Call Us',
-            primary: PHONE_LIST.join(' / '),
+            primary: PHONE_LIST.join(' / ') || NOT_ADDED,
             secondary: 'Sun – Thu, 9 AM – 6 PM',
-            href: `tel:${PRIMARY_PHONE}`,
+            href: telHref(PHONE_LIST[0]),
             accent: 'var(--color-primary)',
         },
         {
             icon: <BsWhatsapp size={22} />,
             label: 'WhatsApp',
-            primary: c.whatsapp || PRIMARY_PHONE,
+            primary: String(c.whatsapp || '').trim() || NOT_ADDED,
             secondary: 'Quick reply within minutes',
-            href: `https://wa.me/${waNumber}`,
+            href: whatsappHref(c.whatsapp),
             accent: '#25D366',
         },
+        // Messenger — only when a Facebook page is set in Site Content → Contact Page.
+        ...(messengerHref(c.messenger) ? [{
+            icon: <BsMessenger size={22} />,
+            label: 'Messenger',
+            primary: messengerId(c.messenger),
+            secondary: 'Message our Facebook page',
+            href: messengerHref(c.messenger),
+            accent: '#0084FF',
+        }] : []),
         {
             icon: <FiMail size={22} />,
             label: 'Email Us',
-            primary: EMAIL_LIST.join(' / '),
+            primary: EMAIL_LIST.join(' / ') || NOT_ADDED,
             secondary: 'We reply within 24 hours',
-            href: `mailto:${PRIMARY_EMAIL}`,
+            href: EMAIL_LIST[0] ? `mailto:${EMAIL_LIST[0]}` : '',
             accent: '#4F46E5',
         },
         {
             icon: <FiMapPin size={22} />,
             label: 'Corporate Office',
-            primary: c.corporateOffice || c.address || '13/7, Gulistan Shopping Complex, Shaheed Abrar Fahad Avenue, Dhaka-1000',
-            secondary: 'Warehouse: ' + (c.warehouse || 'Badsha Electronics Ltd, Vimbazar, Bhawa Mirzapur, Gazipur Sadar, Gazipur-1703'),
-            href: `https://maps.google.com/?q=${encodeURIComponent(c.corporateOffice || '13/7, Gulistan Shopping Complex, Dhaka-1000')}`,
+            primary: OFFICE || NOT_ADDED,
+            secondary: WAREHOUSE ? 'Warehouse: ' + WAREHOUSE : '',
+            href: OFFICE ? `https://maps.google.com/?q=${encodeURIComponent(OFFICE)}` : '',
             accent: 'var(--color-secondary)',
         },
     ];
@@ -139,7 +138,8 @@ export default function ContactClient() {
     const HOURS = (c.hours || []).map((h: any) => ({ day: h.day, time: h.time }));
     const SUBJECTS = c.subjects || [];
     const TIPS = c.tips || [];
-    const SOCIALS = c.socials || [];
+    // Only socials with a real link (the sample ones point to "#").
+    const SOCIALS = (c.socials || []).filter((s: any) => s?.url && String(s.url).trim() !== '#');
 
     return (
         <div style={{ background: '#fff', minHeight: '100vh' }}>
@@ -198,8 +198,12 @@ export default function ContactClient() {
                     {CONTACT_CARDS.map((card, i) => (
                         <a
                             key={i}
-                            href={card.href}
+                            // No href (detail not added yet) → plain text, clicking does nothing.
+                            href={card.href || undefined}
+                            aria-disabled={!card.href || undefined}
+                            {...(card.href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                             style={{
+                                cursor: card.href ? 'pointer' : 'default',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
@@ -210,7 +214,7 @@ export default function ContactClient() {
                                 transition: 'background 0.2s ease',
                                 textAlign: 'center',
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.background = '#f7fbf9')}
+                            onMouseEnter={e => { if (card.href) e.currentTarget.style.background = '#f7fbf9'; }}
                             onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
                         >
                             <div style={{

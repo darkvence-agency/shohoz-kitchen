@@ -6,10 +6,50 @@ import { Product } from '../product/product.model';
 import { User } from '../user/user.model';
 import { Category } from '../category/category.model';
 import AnalyticsService from './analytics.service';
+import { REPORT_TZ, dhakaDayStart, dhakaToday, resolvePeriod } from './analytics.period';
+import { StatusBucket } from './analytics.validation';
+
+/** Numeric query param, or the fallback when missing. Routes validate the range. */
+const num = (v: unknown, fallback: number): number => {
+    const n = Number(v);
+    return Number.isFinite(n) && v !== undefined && v !== '' ? n : fallback;
+};
+
+const hasPeriod = (q: Request['query']) => Boolean(q.from || q.to);
 
 const AnalyticsController = {
+    // ════════════════════════════════════════════════════════════
+    //  SALES REPORT — everything computed for ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    //  (Dhaka calendar days, inclusive; default today)
+    // ════════════════════════════════════════════════════════════
+
+    // GET /analytics/sales-report?from&to
+    getSalesReport: catchAsync(async (req: Request, res: Response) => {
+        const period = resolvePeriod(req.query.from, req.query.to);
+        const data = await AnalyticsService.getSalesReport(period);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Sales report fetched', data });
+    }),
+
+    // GET /analytics/sales-report/orders?from&to&status&page&limit
+    getSalesReportOrders: catchAsync(async (req: Request, res: Response) => {
+        const period = resolvePeriod(req.query.from, req.query.to);
+        const { orders, meta } = await AnalyticsService.getSalesReportOrders(period, {
+            status: (req.query.status as StatusBucket) || undefined,
+            page: num(req.query.page, 1),
+            limit: num(req.query.limit, 10),
+        });
+        sendResponse(res, { statusCode: 200, success: true, message: 'Orders in period fetched', data: orders, meta });
+    }),
+
+    // ════════════════════════════════════════════════════════════
+    //  DASHBOARD / LEGACY ENDPOINTS
+    // ════════════════════════════════════════════════════════════
+
     // GET /analytics/dashboard — Main dashboard summary
     getDashboardSummary: catchAsync(async (req: Request, res: Response) => {
+        // "Today" is the shop's day in Bangladesh, not the server's timezone.
+        const todayStart = dhakaDayStart(dhakaToday());
+
         const [
             totalOrders,
             totalProducts,
@@ -19,6 +59,9 @@ const AnalyticsController = {
             deliveredOrders,
             paidOrders,
             pendingPayments,
+            revenueData,
+            todayOrders,
+            todayRevenue,
         ] = await Promise.all([
             Order.countDocuments(),
             Product.countDocuments({ isDeleted: false }),
@@ -29,21 +72,15 @@ const AnalyticsController = {
             // Payment-status counts (used by the Payments dashboard).
             Order.countDocuments({ paymentStatus: 'paid' }),
             Order.countDocuments({ paymentStatus: 'pending' }),
-        ]);
-
-        const revenueData = await Order.aggregate([
-            { $match: { paymentStatus: 'paid' } },
-            { $group: { _id: null, totalRevenue: { $sum: '$total' } } },
-        ]);
-
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-
-        const todayOrders = await Order.countDocuments({ createdAt: { $gte: todayStart } });
-
-        const todayRevenue = await Order.aggregate([
-            { $match: { createdAt: { $gte: todayStart }, paymentStatus: 'paid' } },
-            { $group: { _id: null, total: { $sum: '$total' } } },
+            Order.aggregate([
+                { $match: { paymentStatus: 'paid' } },
+                { $group: { _id: null, totalRevenue: { $sum: '$total' } } },
+            ]),
+            Order.countDocuments({ createdAt: { $gte: todayStart } }),
+            Order.aggregate([
+                { $match: { createdAt: { $gte: todayStart }, paymentStatus: 'paid' } },
+                { $group: { _id: null, total: { $sum: '$total' } } },
+            ]),
         ]);
 
         sendResponse(res, {
@@ -66,22 +103,24 @@ const AnalyticsController = {
         });
     }),
 
-    // GET /analytics/monthly-revenue
+    // GET /analytics/monthly-revenue — the latest 12 months with paid orders
     getMonthlyRevenue: catchAsync(async (req: Request, res: Response) => {
         const monthlyRevenue = await Order.aggregate([
             { $match: { paymentStatus: 'paid' } },
             {
                 $group: {
                     _id: {
-                        year: { $year: '$createdAt' },
-                        month: { $month: '$createdAt' },
+                        year: { $year: { date: '$createdAt', timezone: REPORT_TZ } },
+                        month: { $month: { date: '$createdAt', timezone: REPORT_TZ } },
                     },
                     revenue: { $sum: '$total' },
                     orders: { $sum: 1 },
                 },
             },
-            { $sort: { '_id.year': 1, '_id.month': 1 } },
+            // Newest 12 first, then back to chronological order.
+            { $sort: { '_id.year': -1, '_id.month': -1 } },
             { $limit: 12 },
+            { $sort: { '_id.year': 1, '_id.month': 1 } },
         ]);
 
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -95,9 +134,9 @@ const AnalyticsController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Monthly revenue fetched', data });
     }),
 
-    // GET /analytics/recent-orders
+    // GET /analytics/recent-orders?limit=10
     getRecentOrders: catchAsync(async (req: Request, res: Response) => {
-        const limit = Number(req.query.limit) || 10;
+        const limit = num(req.query.limit, 10);
         const orders = await Order.find()
             .populate('user', 'firstName lastName email')
             .sort('-createdAt')
@@ -107,9 +146,9 @@ const AnalyticsController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Recent orders fetched', data: orders });
     }),
 
-    // GET /analytics/top-products
+    // GET /analytics/top-products?limit=10 — all-time best sellers
     getTopProducts: catchAsync(async (req: Request, res: Response) => {
-        const limit = Number(req.query.limit) || 10;
+        const limit = num(req.query.limit, 10);
         const topProducts = await Product.find({ isDeleted: false })
             .sort('-totalSold')
             .limit(limit)
@@ -118,49 +157,17 @@ const AnalyticsController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Top products fetched', data: topProducts });
     }),
 
-    // GET /analytics/sales-by-category
+    // GET /analytics/sales-by-category[?from&to] — all time unless a period is given
     getSalesByCategory: catchAsync(async (req: Request, res: Response) => {
-        const salesByCategory = await Order.aggregate([
-            { $unwind: '$items' },
-            {
-                $lookup: {
-                    from: 'products',
-                    localField: 'items.product',
-                    foreignField: '_id',
-                    as: 'productInfo',
-                },
-            },
-            { $unwind: { path: '$productInfo', preserveNullAndEmptyArrays: true } },
-            {
-                $lookup: {
-                    from: 'categories',
-                    localField: 'productInfo.category',
-                    foreignField: '_id',
-                    as: 'categoryInfo',
-                },
-            },
-            { $unwind: { path: '$categoryInfo', preserveNullAndEmptyArrays: true } },
-            {
-                $group: {
-                    // Products with no category (or a deleted one) fall into a single
-                    // clearly-labelled "Uncategorized" bucket instead of a blank/null row.
-                    _id: { $ifNull: ['$categoryInfo._id', 'uncategorized'] },
-                    name: { $first: { $ifNull: ['$categoryInfo.name', 'Uncategorized'] } },
-                    totalSales: { $sum: '$items.total' },
-                    totalItems: { $sum: '$items.quantity' },
-                },
-            },
-            { $sort: { totalSales: -1 } },
-            { $limit: 10 },
-        ]);
-
-        sendResponse(res, { statusCode: 200, success: true, message: 'Sales by category fetched', data: salesByCategory });
+        const period = hasPeriod(req.query) ? resolvePeriod(req.query.from, req.query.to) : undefined;
+        const data = await AnalyticsService.getSalesByCategory(period);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Sales by category fetched', data });
     }),
 
-    // GET /analytics/revenue
+    // GET /analytics/revenue?startDate&endDate — paid revenue per Dhaka day
     getRevenueStats: catchAsync(async (req: Request, res: Response) => {
         const { startDate, endDate } = req.query;
-        const match: any = { paymentStatus: 'paid' };
+        const match: Record<string, any> = { paymentStatus: 'paid' };
 
         if (startDate) match.createdAt = { $gte: new Date(startDate as string) };
         if (endDate) {
@@ -171,7 +178,7 @@ const AnalyticsController = {
             { $match: match },
             {
                 $group: {
-                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+                    _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: REPORT_TZ } },
                     revenue: { $sum: '$total' },
                     orders: { $sum: 1 },
                 },
@@ -182,25 +189,31 @@ const AnalyticsController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Revenue stats fetched', data: dailyRevenue });
     }),
 
-    // ════════════════════════════════════════════════════════════
-    //  ADMIN ENHANCEMENTS
-    // ════════════════════════════════════════════════════════════
-
-    // GET /analytics/low-stock?threshold=10
+    // GET /analytics/low-stock[?threshold=10] — without a threshold each product's own restock level is used
     getLowStock: catchAsync(async (req: Request, res: Response) => {
-        const threshold = Number(req.query.threshold) || 10;
+        const threshold = req.query.threshold !== undefined && req.query.threshold !== '' ? Number(req.query.threshold) : undefined;
         const data = await AnalyticsService.getLowStock(threshold);
         sendResponse(res, { statusCode: 200, success: true, message: 'Low stock products fetched', data });
     }),
 
-    // GET /analytics/returns-summary
+    // GET /analytics/returns-summary[?from&to] — all time unless a period is given
     getReturnsSummary: catchAsync(async (req: Request, res: Response) => {
-        const data = await AnalyticsService.getReturnsSummary();
+        const period = hasPeriod(req.query) ? resolvePeriod(req.query.from, req.query.to) : undefined;
+        const data = await AnalyticsService.getReturnsSummary(period);
         sendResponse(res, { statusCode: 200, success: true, message: 'Returns summary fetched', data });
     }),
 
-    // GET /analytics/report/pdf
+    // GET /analytics/report/pdf[?from&to] — the period's Sales report, or the all-time report without one
     getAdminReportPdf: catchAsync(async (req: Request, res: Response) => {
+        if (hasPeriod(req.query)) {
+            const period = resolvePeriod(req.query.from, req.query.to);
+            const pdf = await AnalyticsService.generateSalesReportPdf(period);
+            const name = period.from === period.to ? period.from : `${period.from}_to_${period.to}`;
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="ShohozKitchen-Sales-Report-${name}.pdf"`);
+            res.send(pdf);
+            return;
+        }
         const pdf = await AnalyticsService.generateAdminReportPdf();
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="ShohozKitchen-Platform-Analytics.pdf"`);

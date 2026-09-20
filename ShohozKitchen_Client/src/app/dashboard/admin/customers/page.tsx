@@ -12,6 +12,7 @@ import {
 } from '@/redux/api/userApi';
 import { useUpdateUserRoleMutation } from '@/redux/api/roleApi';
 import { useRegisterMutation } from '@/redux/api/authApi';
+import { ROLE_HINT, ROLE_LABEL } from '@/components/admin/access';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 import toast from 'react-hot-toast';
@@ -34,7 +35,7 @@ const errMsg = (err: any, fallback: string) =>
     err?.data?.errorMessages?.[0]?.message || err?.data?.message || fallback;
 
 const EMPTY_CUSTOMER = { firstName: '', lastName: '', phone: '', email: '', defaultDiscount: '', loyaltyPoints: '' };
-const EMPTY_ADMIN = { firstName: '', lastName: '', email: '', phone: '', password: '' };
+const EMPTY_ADMIN = { firstName: '', lastName: '', email: '', phone: '', password: '', role: 'admin' as 'admin' | 'editor' };
 
 export default function CustomersPage() {
     const [tab, setTab] = useState<'customers' | 'staff'>('customers');
@@ -51,7 +52,7 @@ export default function CustomersPage() {
     const { data: usersData, isLoading, isFetching } = useGetAdminUsersQuery({
         page,
         limit: PAGE_SIZE,
-        role: tab === 'customers' ? 'user' : 'admin',
+        role: tab === 'customers' ? 'user' : 'staff',   // staff = super admin, admin and editor
         status: status !== 'all' ? status : undefined,
         searchTerm: q || undefined,
     });
@@ -137,7 +138,7 @@ export default function CustomersPage() {
     /* ─── Staff: roles + create admin ─── */
     const handleRoleChange = async (u: any, role: string) => {
         if (role === u.role) return;
-        if (!window.confirm(`Change ${u.firstName}'s role to ${role === 'admin' ? 'Admin' : 'Customer'}?`)) return;
+        if (!window.confirm(`Change ${u.firstName}'s role to ${ROLE_LABEL[role] || role}?`)) return;
         try {
             await updateUserRole({ userId: u._id, role, permissions: [] }).unwrap();
             toast.success('Role updated');
@@ -154,10 +155,11 @@ export default function CustomersPage() {
         if (aForm.password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
         try {
             // Register as a user, then promote through the superadmin roles endpoint.
-            const res = await registerUser({ ...aForm }).unwrap();
+            const { role, ...account } = aForm;
+            const res = await registerUser({ ...account }).unwrap();
             const newUserId = res?.data?.user?._id;
-            if (newUserId) await updateUserRole({ userId: newUserId, role: 'admin', permissions: [] }).unwrap();
-            toast.success('Admin account created');
+            if (newUserId) await updateUserRole({ userId: newUserId, role, permissions: [] }).unwrap();
+            toast.success(`${ROLE_LABEL[role]} account created`);
             setAdminOpen(false);
             setAForm(EMPTY_ADMIN);
         } catch (err: any) {
@@ -178,7 +180,7 @@ export default function CustomersPage() {
                     <Segmented value={tab} onChange={switchTab} options={[{ value: 'customers', label: 'Customers' }, { value: 'staff', label: 'Staff' }]} />
                     {tab === 'customers'
                         ? <Btn variant="primary" icon={<LuPlus size={16} />} onClick={() => setAddOpen(true)}>Add customer</Btn>
-                        : isSuperadmin && <Btn variant="primary" icon={<LuUserPlus size={16} />} onClick={() => setAdminOpen(true)}>Create admin</Btn>}
+                        : isSuperadmin && <Btn variant="primary" icon={<LuUserPlus size={16} />} onClick={() => setAdminOpen(true)}>Add staff</Btn>}
                 </>}
             />
 
@@ -282,9 +284,9 @@ export default function CustomersPage() {
                                                 tone="purple"
                                                 value={u.role}
                                                 onChange={(r) => handleRoleChange(u, r)}
-                                                options={[{ value: 'admin', label: 'Admin' }, { value: 'user', label: 'Customer' }]}
+                                                options={[{ value: 'admin', label: 'Admin' }, { value: 'editor', label: 'Editor' }, { value: 'user', label: 'Customer' }]}
                                             />
-                                        ) : <Badge tone="purple">{u.role === 'superadmin' ? 'Super admin' : 'Admin'}</Badge>}
+                                        ) : <Badge tone="purple">{ROLE_LABEL[u.role] || u.role}</Badge>}
                                     </td>
                                     <td className={TD}>{statusBadge}</td>
                                     <td className={`${TD} whitespace-nowrap text-gray-500`}>{fmtDate(u.createdAt)}</td>
@@ -356,18 +358,25 @@ export default function CustomersPage() {
                 </div>
             </Modal>
 
-            {/* ═══ Create admin (superadmin) ═══ */}
+            {/* ═══ Add staff: admin or editor (superadmin) ═══ */}
             <Modal
                 open={adminOpen}
                 onClose={() => setAdminOpen(false)}
-                title="Create admin"
-                subtitle="This person gets full access to the dashboard."
+                title="Add staff"
+                subtitle={ROLE_HINT[aForm.role]}
                 footer={<>
                     <Btn onClick={() => setAdminOpen(false)}>Cancel</Btn>
-                    <Btn variant="primary" onClick={handleCreateAdmin} disabled={isCreatingAdmin}>{isCreatingAdmin ? 'Creating…' : 'Create admin'}</Btn>
+                    <Btn variant="primary" onClick={handleCreateAdmin} disabled={isCreatingAdmin}>{isCreatingAdmin ? 'Creating…' : `Create ${ROLE_LABEL[aForm.role].toLowerCase()}`}</Btn>
                 </>}
             >
                 <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Role" required className="sm:col-span-2">
+                        <Segmented
+                            value={aForm.role}
+                            onChange={(r) => setAForm({ ...aForm, role: r })}
+                            options={[{ value: 'admin', label: 'Admin' }, { value: 'editor', label: 'Editor' }]}
+                        />
+                    </Field>
                     <Field label="First name" required>
                         <input className={INPUT} value={aForm.firstName} onChange={(e) => setAForm({ ...aForm, firstName: e.target.value })} />
                     </Field>

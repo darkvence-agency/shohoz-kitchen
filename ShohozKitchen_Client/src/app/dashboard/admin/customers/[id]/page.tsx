@@ -42,6 +42,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 const RoleBadge = ({ role }: { role: string }) => {
     if (role === 'superadmin') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100"><FiShield size={11} /> Super Admin</span>;
     if (role === 'admin') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-purple-50 text-purple-700 border border-purple-100"><FiShield size={11} /> Admin</span>;
+    if (role === 'editor') return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-sky-50 text-sky-700 border border-sky-100"><FiShield size={11} /> Editor</span>;
     return <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-50 text-gray-600 border border-gray-100">Customer</span>;
 };
 

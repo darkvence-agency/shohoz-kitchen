@@ -11,7 +11,7 @@ import { loginSuccess } from '@/redux/slices/authSlice';
 import { useCreateOrderMutation, useGuestCheckoutMutation } from '@/redux/api/orderApi';
 import { useInitPaymentMutation } from '@/redux/api/paymentApi';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
-import { useGetShippingQuoteQuery } from '@/redux/api/shippingApi';
+import { useGetShippingQuoteQuery, useGetShippingSettingsQuery, type DeliveryArea } from '@/redux/api/shippingApi';
 import { useGetMyAddressesQuery, useAddAddressMutation } from '@/redux/api/userApi';
 import {
     FiChevronLeft, FiInfo, FiCheck, FiCopy, FiLock, FiTag, FiCreditCard, FiTruck,
@@ -155,15 +155,30 @@ const CheckoutPage = () => {
     //     }
     // };
 
+    // ─── Delivery area: Inside / Outside Dhaka, each with its flat charge from Settings ──
+    const { data: shipSettings } = useGetShippingSettingsQuery();
+    const insideRate = shipSettings?.defaultInsideDhakaRate ?? 70;
+    const outsideRate = shipSettings?.defaultOutsideDhakaRate ?? 130;
+    const [deliveryArea, setDeliveryArea] = useState<DeliveryArea | ''>('');
+    const [areaTouched, setAreaTouched] = useState(false);
+    // A city that says "Dhaka" pre-picks Inside Dhaka until the customer chooses themselves.
+    const suggestedArea: DeliveryArea | '' = !areaTouched && /dhaka/i.test(debouncedCity) ? 'inside_dhaka' : '';
+    const area: DeliveryArea | '' = deliveryArea || suggestedArea;
+    const pickArea = (a: DeliveryArea) => {
+        setDeliveryArea(a);
+        setAreaTouched(true);
+        if (errors.deliveryArea) setErrors((prev) => { const n = { ...prev }; delete n.deliveryArea; return n; });
+    };
+
     const { data: shippingQuote } = useGetShippingQuoteQuery(
-        { city: debouncedCity || undefined, subtotal: totalPrice, zoneId: quoteZoneId },
+        { city: debouncedCity || undefined, subtotal: totalPrice, zoneId: quoteZoneId, area: area || undefined },
         { skip: totalPrice <= 0 },
     );
 
-    // Fall back to a sensible default so a number always shows while the quote loads.
+    // Fall back to the chosen area's rate so a number always shows while the quote loads.
     // A free-shipping coupon zeroes delivery here too (matches the server's charge).
-    const freeShipping = Boolean(appliedCoupon?.freeShipping) || (shippingQuote?.freeShipping ?? (totalPrice >= 5000));
-    const shippingCost = freeShipping ? 0 : (shippingQuote?.shippingCost ?? (totalPrice >= 5000 ? 0 : 120));
+    const freeShipping = Boolean(appliedCoupon?.freeShipping) || (shippingQuote?.freeShipping ?? false);
+    const shippingCost = freeShipping ? 0 : (area ? (shippingQuote?.shippingCost ?? (area === 'inside_dhaka' ? insideRate : outsideRate)) : 0);
     const estimatedDays = shippingQuote?.estimatedDays ?? '3-5 days';
     const FREE_REASON_LABEL: Record<string, string> = {
         threshold: 'Order qualifies', coupon: 'Coupon applied', product: 'Free-delivery items', quantity: 'Bulk order',
@@ -224,6 +239,7 @@ const CheckoutPage = () => {
         if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) e.email = 'Enter a valid email';
         if (!formData.address.trim()) e.address = 'Address is required';
         if (!formData.city.trim()) e.city = 'City is required';
+        if (!area) e.deliveryArea = 'Choose Inside Dhaka or Outside Dhaka';
         // bKash requires the "send money" confirmation details. SSLCommerz redirects
         // to the gateway (later phase) and COD is paid on delivery — neither needs them.
         if (selectedPayment === 'bkash') {
@@ -309,6 +325,7 @@ const CheckoutPage = () => {
                 paymentTime: paymentDetails.paymentTime,
             } : {},
             shippingCost,
+            ...(area ? { deliveryArea: area } : {}),
             ...(quoteZoneId ? { zoneId: quoteZoneId } : {}),
             ...(appliedCoupon ? { couponCode: appliedCoupon.code, discount: appliedCoupon.discount } : {}),
         };
@@ -604,6 +621,36 @@ const CheckoutPage = () => {
                                     )}
                                 </div>
                                 )}
+
+                                    {/* Delivery area → flat charge (Admin → Settings → Business) */}
+                                    <div className="px-5 pb-5" data-field="deliveryArea">
+                                        <label className={labelClass}>Delivery Area <span className="text-red-500">*</span></label>
+                                        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Delivery area">
+                                            {([
+                                                { value: 'inside_dhaka', label: 'Inside Dhaka', rate: insideRate },
+                                                { value: 'outside_dhaka', label: 'Outside Dhaka', rate: outsideRate },
+                                            ] as const).map((opt) => {
+                                                const active = area === opt.value;
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        role="radio"
+                                                        aria-checked={active}
+                                                        onClick={() => pickArea(opt.value)}
+                                                        className={`flex items-center justify-between gap-2 rounded-md border px-3.5 py-3 text-left transition-colors ${active ? 'border-[var(--color-primary)] bg-[var(--color-primary-lightest)]' : errors.deliveryArea ? 'border-red-300 bg-red-50/40' : 'border-gray-200 hover:border-gray-300'}`}
+                                                    >
+                                                        <span className="flex items-center gap-2">
+                                                            <span className={`inline-block h-4 w-4 rounded-full border-2 ${active ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[inset_0_0_0_2px_#fff]' : 'border-gray-300'}`} />
+                                                            <span className="text-sm font-semibold text-gray-800">{opt.label}</span>
+                                                        </span>
+                                                        <span className="text-sm font-bold text-gray-900">৳{opt.rate}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <FieldError field="deliveryArea" />
+                                    </div>
                             </div>
 
 
@@ -851,8 +898,15 @@ const CheckoutPage = () => {
                                                 <span className="font-medium text-green-600">FREE</span>
                                                 {freeReasonLabel && <span className="block text-[10px] text-green-600/70">{freeReasonLabel}</span>}
                                             </span>
+                                        ) : area ? (
+                                            <span className="text-right">
+                                                <span className="text-gray-900">৳{shippingCost.toLocaleString()}</span>
+                                                <span className="block text-[10px] text-gray-400">{area === 'inside_dhaka' ? 'Inside Dhaka' : 'Outside Dhaka'}</span>
+                                            </span>
                                         ) : (
-                                            <span className="text-gray-900">৳{shippingCost.toLocaleString()}</span>
+                                            <span className="text-right text-xs text-gray-400">
+                                                Inside Dhaka ৳{insideRate}<br />Outside Dhaka ৳{outsideRate}
+                                            </span>
                                         )}
                                     </div>
                                     <div className="flex justify-between items-center pt-3 mt-1 border-t border-gray-100">

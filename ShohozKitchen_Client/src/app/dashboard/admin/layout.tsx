@@ -8,8 +8,10 @@ export default function AdminRootLayout({
 }: {
     children: React.ReactNode;
 }) {
+    // Staff only: super admin, admin and editor. What each role may open is decided in
+    // components/admin/access.ts (AdminLayout redirects away from anything else).
     return (
-        <AuthGuard requiredRole="admin">
+        <AuthGuard requiredRole={['admin', 'editor']}>
             <AdminLayout>{children}</AdminLayout>
         </AuthGuard>
     );

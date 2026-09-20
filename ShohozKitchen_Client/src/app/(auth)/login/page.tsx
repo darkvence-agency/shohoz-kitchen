@@ -12,6 +12,7 @@ import { useMergeWishlistMutation } from '@/redux/api/userApi';
 import { toast } from 'react-hot-toast';
 import { FiLock, FiEye, FiEyeOff, FiArrowRight, FiAlertCircle, FiUser } from 'react-icons/fi';
 import GoogleSignInButton from '@/components/shared/GoogleSignInButton';
+import { canOpen, homeFor } from '@/components/admin/access';
 
 const inputCls =
     'w-full pl-11 pr-4 py-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15';
@@ -76,9 +77,10 @@ const LoginPageInner = () => {
             // Staff (admin / super admin) ALWAYS land in the admin panel. A redirect
             // param is honored only when it points to an admin route (deep link) — a
             // customer-area redirect must never trap an admin in the user dashboard.
-            const isStaff = user.role === 'admin' || user.role === 'superadmin';
+            const isStaff = user.role === 'admin' || user.role === 'superadmin' || user.role === 'editor';
             if (isStaff) {
-                router.push(redirectPath && redirectPath.startsWith('/dashboard/admin') ? redirectPath : '/dashboard/admin');
+                // Editors start on Orders; a deep link is honoured only if the role may open it.
+                router.push(redirectPath && redirectPath.startsWith('/dashboard/admin') && canOpen(user.role, redirectPath) ? redirectPath : homeFor(user.role));
             } else if (redirectPath) {
                 router.push(redirectPath);
             } else {

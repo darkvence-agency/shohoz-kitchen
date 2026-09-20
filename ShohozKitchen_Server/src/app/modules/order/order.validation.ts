@@ -5,11 +5,12 @@ const orderItemValidation = z.object({
     quantity: z.number().int('Quantity must be a whole number').min(1, 'Quantity must be at least 1').max(10000, 'Quantity is too large'),
 });
 
+// Upper limits keep customer-typed text to a sane size (it is stored and pattern-matched later).
 const shippingAddressValidation = z.object({
-    fullName: z.string().min(1, 'Full name required'),
-    phone: z.string().min(1, 'Phone required'),
-    email: z.string().optional(),
-    address: z.string().min(1, 'Address required'),
+    fullName: z.string().min(1, 'Full name required').max(120, 'Full name is too long'),
+    phone: z.string().min(1, 'Phone required').max(30, 'Phone number is too long'),
+    email: z.string().max(254, 'Email is too long').optional(),
+    address: z.string().min(1, 'Address required').max(500, 'Address is too long'),
     area: z.string().optional(),
     city: z.string().optional(),
     postalCode: z.string().optional(),
@@ -31,6 +32,8 @@ export const createOrderValidation = z.object({
         note: z.string().optional(),
         // Delivery zone chosen from the checkout dropdown (deterministic rate).
         zoneId: z.string().optional(),
+        // Inside / Outside Dhaka picked at checkout → the flat charge from Settings.
+        deliveryArea: z.enum(['inside_dhaka', 'outside_dhaka']).optional(),
     }),
 });
 

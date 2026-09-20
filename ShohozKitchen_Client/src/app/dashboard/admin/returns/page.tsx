@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
     useGetAdminReturnsQuery,
     useApproveReturnMutation,
@@ -64,8 +65,21 @@ function StatusBadge({ status }: { status: string }) {
     );
 }
 
+// useSearchParams needs a Suspense boundary (Next.js falls back to client rendering up to it).
 export default function AdminReturnsPage() {
-    const [activeTab, setActiveTab] = useState<ReturnStatus | 'all'>('all');
+    return (
+        <Suspense fallback={null}>
+            <AdminReturnsPageInner />
+        </Suspense>
+    );
+}
+
+function AdminReturnsPageInner() {
+    // ?status=pending (the Dashboard's "Return requests to review" link) pre-selects the tab.
+    const statusParam = useSearchParams().get('status');
+    const [activeTab, setActiveTab] = useState<ReturnStatus | 'all'>(
+        STATUS_TABS.find((t) => t.value === statusParam)?.value || 'all',
+    );
     const [selected, setSelected] = useState<any | null>(null);
     const [lightbox, setLightbox] = useState<string | null>(null);
     const [rejectMode, setRejectMode] = useState(false);

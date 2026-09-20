@@ -385,6 +385,12 @@ const RateModal = ({ isOpen, onClose, onSubmit, zones, editingRate }: { isOpen: 
 };
 
 // ── Settings tab — global free-shipping + default rate rules ──
+const SETTINGS_TAB_FIELDS = [
+    'freeShippingByThresholdEnabled', 'freeShippingThreshold',
+    'quantityFreeShippingEnabled', 'minItemsForFreeShipping',
+    'defaultInsideDhakaRate', 'defaultOutsideDhakaRate', 'defaultEstimatedDays',
+] as const satisfies readonly (keyof ShippingSettings)[];
+
 const SettingsTab = () => {
     const { data: settings, isLoading } = useGetShippingSettingsQuery();
     const [save, { isLoading: saving }] = useUpdateShippingSettingsMutation();
@@ -399,8 +405,19 @@ const SettingsTab = () => {
     const set = <K extends keyof ShippingSettings>(k: K, v: ShippingSettings[K]) => setForm({ ...form, [k]: v });
 
     const onSave = async () => {
+        // Send only the fields this tab edits, and only those changed here. The rest of the
+        // settings document (the courier COD charge, or a rate just changed on Settings →
+        // Business) must never be written back with the stale value this tab loaded.
+        const body: Partial<ShippingSettings> = {};
+        for (const k of SETTINGS_TAB_FIELDS) {
+            if (form[k] !== settings?.[k]) (body as Record<string, unknown>)[k] = form[k];
+        }
+        if (Object.keys(body).length === 0) {
+            toast.success('Nothing to save — no changes');
+            return;
+        }
         try {
-            await save(form).unwrap();
+            await save(body).unwrap();
             toast.success('Shipping settings saved');
         } catch (e: any) {
             toast.error(e?.data?.message || 'Failed to save settings');

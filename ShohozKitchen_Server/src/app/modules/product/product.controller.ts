@@ -2,10 +2,30 @@ import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import ProductService from './product.service';
+import { User } from '../user/user.model';
+
+/**
+ * The listing route runs optionalAuth, which only verifies the token's signature. Drafts
+ * and cost prices are staff data, so they need BOTH an explicit ?includeDrafts=true (sent
+ * only by the admin Products page — an admin browsing the shop sees what shoppers see)
+ * AND a token whose user is still an active admin, checked the way authMiddleware does.
+ */
+/** Staff who manage the catalogue (editors add and update products too). */
+const STAFF_ROLES: ReadonlyArray<string | undefined> = ['admin', 'superadmin', 'editor'];
+
+async function wantsStaffView(req: Request): Promise<boolean> {
+    const asked = req.query.includeDrafts === 'true' || req.query.includeDrafts === '1';
+    delete (req.query as Record<string, unknown>).includeDrafts; // never a Mongo filter
+    const role = req.user?.role;
+    if (!asked || !STAFF_ROLES.includes(role)) return false;
+    const user: any = await User.findById(req.user?.userId).select('role status isDeleted').lean();
+    return !!user && !user.isDeleted && user.status !== 'blocked' && STAFF_ROLES.includes(user.role);
+}
 
 const ProductController = {
     getAll: catchAsync(async (req: Request, res: Response) => {
-        const { products, meta } = await ProductService.getAllProducts(req.query as Record<string, unknown>);
+        const staff = await wantsStaffView(req);
+        const { products, meta } = await ProductService.getAllProducts(req.query as Record<string, unknown>, { staff });
         sendResponse(res, { statusCode: 200, success: true, message: 'Products fetched', data: products, meta });
     }),
 
@@ -50,12 +70,12 @@ const ProductController = {
     }),
 
     create: catchAsync(async (req: Request, res: Response) => {
-        const product = await ProductService.createProduct(req.body);
+        const product = await ProductService.createProduct(req.body, { actorId: req.user?.userId });
         sendResponse(res, { statusCode: 201, success: true, message: 'Product created', data: product });
     }),
 
     update: catchAsync(async (req: Request, res: Response) => {
-        const product = await ProductService.updateProduct(req.params.id, req.body);
+        const product = await ProductService.updateProduct(req.params.id, req.body, req.user?.userId);
         sendResponse(res, { statusCode: 200, success: true, message: 'Product updated', data: product });
     }),
 
@@ -76,7 +96,7 @@ const ProductController = {
 
     // ── Bulk upload (admin) — products go live immediately ──────────────
     bulkUpload: catchAsync(async (req: Request, res: Response) => {
-        const result = await ProductService.bulkCreate(req.body.products);
+        const result = await ProductService.bulkCreate(req.body.products, req.user?.userId);
         sendResponse(res, {
             statusCode: 201, success: true,
             message: `Bulk upload complete: ${result.created} created, ${result.failed.length} failed`,

@@ -33,6 +33,7 @@ const siteContentSchema = new Schema({
         phone: { type: String, default: '' },            // primary phone (for tel: links)
         phones: { type: [String], default: [] },         // additional phones — shown as list
         whatsapp: { type: String, default: '' },
+        messenger: { type: String, default: '' },        // Facebook page username or link (for m.me)
         email: { type: String, default: '' },
         emails: { type: [String], default: [] },         // additional emails
         address: { type: String, default: '' },
@@ -46,6 +47,7 @@ const siteContentSchema = new Schema({
     },
 
     // ── Floating Widget ──
+    // An empty phone / whatsapp / messenger means "use the Contact Info value".
     floating: {
         phone: { type: String, default: '' },
         whatsapp: { type: String, default: '' },

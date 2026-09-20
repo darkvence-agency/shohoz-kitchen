@@ -32,6 +32,7 @@ router.get('/admin/:id', authMiddleware, authorizeRoles('admin'), UserController
 router.post('/admin/customers', authMiddleware, authorizeRoles('admin'), validateRequest(createCustomerValidation), UserController.createCustomer);
 router.patch('/admin/:id', authMiddleware, authorizeRoles('admin'), validateRequest(adminUpdateUserValidation), UserController.adminUpdateUser);
 router.patch('/admin/:id/status', authMiddleware, authorizeRoles('admin'), validateRequest(updateStatusValidation), UserController.updateUserStatus);
-router.delete('/admin/:id', authMiddleware, authorizeRoles('admin'), UserController.deleteUser);
+// Deleting a user is super admin only (admins can block, never delete).
+router.delete('/admin/:id', authMiddleware, authorizeRoles('superadmin'), UserController.deleteUser);
 
 export const UserRoutes = router;

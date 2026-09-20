@@ -15,6 +15,7 @@ import {
 } from 'react-icons/fi';
 import { useGetProductBySlugQuery, useGetRelatedProductsQuery, useIncrementProductStatMutation } from '@/redux/api/productApi';
 import { useGetProductReviewsQuery, useCreateReviewMutation, useCanReviewQuery } from '@/redux/api/reviewApi';
+import { useGetShippingSettingsQuery } from '@/redux/api/shippingApi';
 import { useAppDispatch, useAppSelector } from '@/redux';
 import { addToCart, updateQuantity } from '@/redux/slices/cartSlice';
 import { useCreateInquiryMutation } from '@/redux/api/inquiryApi';
@@ -98,6 +99,8 @@ export default function ProductDetailsPage() {
     );
     const relatedProducts = relatedData?.data || [];
 
+    // Delivery charges shown in the Delivery Options box (Admin → Settings → Business).
+    const { data: shipSettings } = useGetShippingSettingsQuery();
     const { data: reviewsData } = useGetProductReviewsQuery({ productId: product?._id }, { skip: !product?._id });
     const reviews = reviewsData?.data || [];
     // const [publicCreateReview] = usePublicCreateReviewMutation();
@@ -716,15 +719,27 @@ export default function ProductDetailsPage() {
                             {/* Delivery Options */}
                             <div style={{ padding: '14px', borderBottom: '1px solid #f0f0f0' }}>
                                 <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 10px' }}>Delivery Options</p>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '12px' }}>
-                                    <FiMapPin size={15} style={{ color: '#6b7280', flexShrink: 0, marginTop: '1px' }} />
-                                    <span style={{ fontSize: '12px', color: '#444', lineHeight: 1.4 }}>Dhaka, Bangladesh</span>
-                                </div>
+                                {/* Delivery charges from Admin → Settings → Business (checkout charges the same) */}
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
                                     <FiTruck size={15} style={{ color: '#6b7280', flexShrink: 0, marginTop: '1px' }} />
                                     <div style={{ flex: 1 }}>
-                                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#111', margin: 0 }}>Standard Delivery</p>
-                                        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>৳60 · Guaranteed in 3-5 days</p>
+                                        <p style={{ fontSize: '12px', fontWeight: 600, color: '#111', margin: '0 0 4px' }}>Delivery Charge</p>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Inside Dhaka</span>
+                                            <strong style={{ color: '#111' }}>৳{shipSettings?.defaultInsideDhakaRate ?? 70}</strong>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Outside Dhaka</span>
+                                            <strong style={{ color: '#111' }}>৳{shipSettings?.defaultOutsideDhakaRate ?? 130}</strong>
+                                        </div>
+                                        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '3px 0 0' }}>
+                                            Delivery in {shipSettings?.defaultEstimatedDays || '3-5 days'}
+                                            {product.shippingConfig?.freeShipping
+                                                ? ' · This item ships free'
+                                                : shipSettings?.freeShippingByThresholdEnabled && Number(shipSettings?.freeShippingThreshold) > 0
+                                                    ? ` · Free on orders over ৳${Number(shipSettings.freeShippingThreshold).toLocaleString()}`
+                                                    : ''}
+                                        </p>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>

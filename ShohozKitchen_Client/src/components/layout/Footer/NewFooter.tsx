@@ -12,6 +12,8 @@ import { FaFacebookF, FaLinkedinIn, FaYoutube, FaInstagram, FaWhatsapp } from 'r
 import { FaXTwitter, FaTiktok } from 'react-icons/fa6';
 import { toast } from 'react-hot-toast';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
+import { telHref, whatsappHref } from '@/utils/contactLinks';
+import { homeFor, isStaffRole } from '@/components/admin/access';
 import type { IconType } from 'react-icons';
 
 /* ─── Map a social label to its icon (case-insensitive) ─── */
@@ -73,22 +75,18 @@ const NewFooter: React.FC = () => {
     const socials: { label: string; url: string }[] = (siteRes?.data?.contact?.socials || [])
         .filter((s: any) => s?.url && s.url !== '#');
 
-    // Contact info from DB with sensible Shohoz Kitchen defaults
+    // Contact info from Admin → Site Content. No sample fallbacks: an empty field is
+    // simply not shown (and links nowhere) until an admin fills it in.
     const contact = siteRes?.data?.contact || {};
-    const phoneList: string[] = (Array.isArray(contact.phones) && contact.phones.length > 0)
-        ? contact.phones
-        : (contact.phone ? [contact.phone] : ['01611829111', '01955668133', '01624033566']);
-    const emailList: string[] = (Array.isArray(contact.emails) && contact.emails.length > 0)
-        ? contact.emails
-        : (contact.email ? [contact.email] : ['info@shohozkitchen.com']);
-    const website: string = contact.website || 'shohozkitchen.com';
-    const corporateOffice: string = contact.corporateOffice || contact.address || '13/7, Gulistan Shopping Complex, Shaheed Abrar Fahad Avenue, Dhaka-1000';
-    const warehouse: string = contact.warehouse || 'Badsha Electronics Ltd, Vimbazar, Bhawa Mirzapur, Gazipur Sadar, Gazipur-1703';
+    const clean = (list: unknown): string[] => (Array.isArray(list) ? list : []).map((v) => String(v ?? '').trim()).filter(Boolean);
+    const phoneList: string[] = clean(contact.phones).length > 0 ? clean(contact.phones) : clean([contact.phone]);
+    const emailList: string[] = clean(contact.emails).length > 0 ? clean(contact.emails) : clean([contact.email]);
+    const website: string = String(contact.website || '').trim().replace(/^https?:\/\//i, '');
+    const corporateOffice: string = String(contact.corporateOffice || contact.address || '').trim();
+    const warehouse: string = String(contact.warehouse || '').trim();
 
-    // WhatsApp link for "Live Chat" — normalized to wa.me format (88 + local digits)
-    const waDigits = (siteRes?.data?.contact?.whatsapp || siteRes?.data?.floating?.whatsapp || '8801611829111').replace(/\D/g, '');
-    const waNumber = waDigits.startsWith('880') ? waDigits : waDigits.startsWith('0') ? '88' + waDigits : '880' + waDigits;
-    const whatsappLink = `https://wa.me/${waNumber}`;
+    // "Live Chat (WhatsApp)" — only when a WhatsApp number is set.
+    const whatsappLink = whatsappHref(contact.whatsapp || siteRes?.data?.floating?.whatsapp);
 
     const handleLogout = () => {
         dispatch(logout());
@@ -109,18 +107,24 @@ const NewFooter: React.FC = () => {
                             <Logo size={66} />
                         </Link>
                         <div className="space-y-2.5">
-                            <div className="flex items-start gap-2.5">
-                                <FiMapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                                <p className="text-sm text-gray-500"><span className="font-semibold text-gray-600">Corporate Office:</span> {corporateOffice}</p>
-                            </div>
-                            <div className="flex items-start gap-2.5">
-                                <FiMapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                                <p className="text-sm text-gray-500"><span className="font-semibold text-gray-600">Warehouse:</span> {warehouse}</p>
-                            </div>
-                            <div className="flex items-start gap-2.5">
-                                <FiGlobe size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                                <a href={`https://${website}`} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">{website}</a>
-                            </div>
+                            {corporateOffice && (
+                                <div className="flex items-start gap-2.5">
+                                    <FiMapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                                    <p className="text-sm text-gray-500"><span className="font-semibold text-gray-600">Corporate Office:</span> {corporateOffice}</p>
+                                </div>
+                            )}
+                            {warehouse && (
+                                <div className="flex items-start gap-2.5">
+                                    <FiMapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                                    <p className="text-sm text-gray-500"><span className="font-semibold text-gray-600">Warehouse:</span> {warehouse}</p>
+                                </div>
+                            )}
+                            {website && (
+                                <div className="flex items-start gap-2.5">
+                                    <FiGlobe size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                                    <a href={`https://${website}`} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">{website}</a>
+                                </div>
+                            )}
                             {emailList.map((em) => (
                                 <div key={em} className="flex items-center gap-2.5">
                                     <FiMail size={14} className="text-gray-400 shrink-0" />
@@ -167,19 +171,21 @@ const NewFooter: React.FC = () => {
                         <h4 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wide">Support</h4>
                         <ul className="space-y-2.5">
                             {phoneList.map((p, i) => {
-                                const digits = p.replace(/\D/g, '');
-                                const tel = digits.startsWith('880') ? `+${digits}` : digits.startsWith('0') ? `+880${digits.slice(1)}` : `+880${digits}`;
+                                const href = telHref(p);
+                                if (!href) return null;
                                 return (
                                     <li key={p}>
-                                        <a href={`tel:${tel}`} className={`flex items-center gap-2 text-sm ${i === 0 ? 'font-semibold text-[var(--color-primary)] hover:underline' : 'text-gray-500 hover:text-[var(--color-primary)] transition-colors'}`}>
+                                        <a href={href} className={`flex items-center gap-2 text-sm ${i === 0 ? 'font-semibold text-[var(--color-primary)] hover:underline' : 'text-gray-500 hover:text-[var(--color-primary)] transition-colors'}`}>
                                             <FiPhone size={14} /> {p}
                                         </a>
                                     </li>
                                 );
                             })}
-                            <li><a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">Live Chat (WhatsApp)</a></li>
+                            {whatsappLink && (
+                                <li><a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">Live Chat (WhatsApp)</a></li>
+                            )}
                             {isAuthenticated ? (
-                                <li><Link href={user?.role === 'admin' ? '/dashboard/admin' : '/dashboard/user'} className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">My Account</Link></li>
+                                <li><Link href={isStaffRole(user?.role) ? homeFor(user?.role) : '/dashboard/user'}className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">My Account</Link></li>
                             ) : (
                                 <li><Link href="/login" className="text-sm text-gray-500 hover:text-[var(--color-primary)] transition-colors">Sign In / Register</Link></li>
                             )}

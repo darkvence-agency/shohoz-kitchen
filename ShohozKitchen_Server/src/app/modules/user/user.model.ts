@@ -33,7 +33,7 @@ const userSchema = new Schema<IUser, UserModel, IUserMethods>(
         // ── Role & Status ────────────────────────────
         role: {
             type: String,
-            enum: { values: ['superadmin', 'admin', 'user'], message: '{VALUE} is not a valid role' },
+            enum: { values: ['superadmin', 'admin', 'editor', 'user'], message: '{VALUE} is not a valid role' },
             default: 'user',
         },
         permissions: { type: [String], default: [] },

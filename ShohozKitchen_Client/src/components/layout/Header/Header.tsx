@@ -17,6 +17,8 @@ import { logout } from '@/redux/slices/authSlice';
 import Logo from '@/components/shared/Logo';
 import SearchAutocomplete from '@/components/shared/SearchAutocomplete';
 import { useWishlist } from '@/hooks/useWishlist';
+import { telHref } from '@/utils/contactLinks';
+import { homeFor, isStaffRole } from '@/components/admin/access';
 
 interface Category {
     _id: string;
@@ -50,13 +52,11 @@ const Header: React.FC = () => {
     const [isSearchCatOpen, setIsSearchCatOpen] = useState(false);
     const [selectedSearchCat, setSelectedSearchCat] = useState<Category | null>(null);
     const [isCatMenuOpen, setIsCatMenuOpen] = useState(false);
-    const [isServicesOpen, setIsServicesOpen] = useState(false);
 
     const profileRef = useRef<HTMLDivElement>(null);
     const searchCatRef = useRef<HTMLDivElement>(null);
     const mobileSearchCatRef = useRef<HTMLDivElement>(null);
     const catMenuRef = useRef<HTMLDivElement>(null);
-    const servicesRef = useRef<HTMLDivElement>(null);
 
     const cartItems = useAppSelector((state) => state.cart.items);
     const { count: wishlistCount } = useWishlist();
@@ -71,9 +71,8 @@ const Header: React.FC = () => {
     const categories: Category[] = categoriesData?.data?.length > 0 ? categoriesData.data : FALLBACK_CATEGORIES;
     const { data: siteContentRes } = useGetSiteContentQuery(undefined);
     const contact = siteContentRes?.data?.contact || {};
-    const contactPhone: string = contact.phone || '+8801611829111';
-    const contactEmail: string = contact.email || 'info@shohozkitchen.com';
-    const contactAddress: string = contact.address || 'Dhaka, Bangladesh';
+    // No sample fallback: until an admin adds a phone in Site Content, nothing is dialled.
+    const contactPhoneHref = telHref(contact.phone);
 
 
     useEffect(() => {
@@ -89,7 +88,6 @@ const Header: React.FC = () => {
             const inMobile = mobileSearchCatRef.current && mobileSearchCatRef.current.contains(e.target as Node);
             if (!inDesktop && !inMobile) setIsSearchCatOpen(false);
             if (catMenuRef.current && !catMenuRef.current.contains(e.target as Node)) setIsCatMenuOpen(false);
-            if (servicesRef.current && !servicesRef.current.contains(e.target as Node)) setIsServicesOpen(false);
         };
         document.addEventListener('mousedown', h);
         return () => document.removeEventListener('mousedown', h);
@@ -238,10 +236,17 @@ const Header: React.FC = () => {
 
                             {/* Left: app + support */}
                             <div className="flex items-center gap-5">
-                                <a href={`tel:${contactPhone}`} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
-                                    <FiSmartphone size={13} strokeWidth={2} />
-                                    <span>Shohoz Kitchen App</span>
-                                </a>
+                                {contactPhoneHref ? (
+                                    <a href={contactPhoneHref} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
+                                        <FiSmartphone size={13} strokeWidth={2} />
+                                        <span>Shohoz Kitchen App</span>
+                                    </a>
+                                ) : (
+                                    <span className="flex items-center gap-1.5 select-none">
+                                        <FiSmartphone size={13} strokeWidth={2} />
+                                        <span>Shohoz Kitchen App</span>
+                                    </span>
+                                )}
                                 <Link href="/contact" className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
                                     <FiHeadphones size={13} strokeWidth={2} />
                                     <span>Support</span>
@@ -345,44 +350,14 @@ const Header: React.FC = () => {
                             {/* Right Action Icons */}
                             <div className="flex items-center shrink-0 gap-1 ml-auto">
 
-                                {/* Services — dropdown */}
-                                <div className="relative hidden xl:block" ref={servicesRef}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsServicesOpen((p) => !p)}
-                                        className="flex items-center gap-1.5 px-2.5 h-[40px] text-[14px] font-semibold whitespace-nowrap hover:opacity-70 transition-opacity cursor-pointer select-none"
-                                        style={{ color: 'var(--color-text-primary)' }}
-                                    >
-                                        <span>Services</span>
-                                        <FiChevronDown
-                                            size={14}
-                                            strokeWidth={2.5}
-                                            className={`transition-transform duration-200 text-gray-500 ${isServicesOpen ? 'rotate-180' : ''}`}
-                                        />
-                                    </button>
-
-                                    {isServicesOpen && (
-                                        <div
-                                            className="absolute top-full right-0 mt-2 w-52 bg-white rounded-lg border z-[100] p-1.5"
-                                            style={{ borderColor: 'var(--color-soft-border)', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.18)' }}
-                                        >
-                                            {[
-                                                { href: '/track', label: 'Track Order', icon: <FiBox size={15} /> },
-                                                { href: '/contact', label: 'Help & Support', icon: <FiHeadphones size={15} /> },
-                                                { href: '/refund', label: 'Returns & Refunds', icon: <FiMapPin size={15} /> },
-                                            ].map((s) => (
-                                                <Link
-                                                    key={s.href}
-                                                    href={s.href}
-                                                    onClick={() => setIsServicesOpen(false)}
-                                                    className="flex items-center gap-2.5 px-3 py-2 rounded text-[13px] text-gray-700 hover:bg-[var(--color-primary-lightest)] hover:text-[var(--color-primary)] transition-colors"
-                                                >
-                                                    {s.icon} {s.label}
-                                                </Link>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Products — all products page */}
+                                <Link
+                                    href="/products"
+                                    className="hidden xl:flex items-center px-2.5 h-[40px] text-[14px] font-semibold whitespace-nowrap hover:opacity-70 transition-opacity cursor-pointer select-none"
+                                    style={{ color: 'var(--color-text-primary)' }}
+                                >
+                                    Products
+                                </Link>
 
                                 <Link
                                     href="/cart"
@@ -422,10 +397,10 @@ const Header: React.FC = () => {
                                                 <div className="py-1.5">
                                                     {[
                                                         {
-                                                            href: (user.role === 'admin' || user.role === 'superadmin') ? '/dashboard/admin' : '/dashboard/user',
+                                                            href: isStaffRole(user.role) ? homeFor(user.role) : '/dashboard/user',
                                                             icon: <FiGrid size={15} />, label: 'Dashboard',
                                                         },
-                                                        ...((user.role === 'admin' || user.role === 'superadmin') ? [] : [
+                                                        ...(isStaffRole(user.role) ? [] : [
                                                             { href: '/dashboard/user/orders', icon: <FiBox size={15} />, label: 'My Orders' }
                                                         ]),
                                                         { href: wishlistHref, icon: <FiHeart size={15} />, label: 'Wishlist' },

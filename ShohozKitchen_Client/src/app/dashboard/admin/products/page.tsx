@@ -8,6 +8,9 @@ import { LuPlus, LuUpload, LuPencil, LuTrash2, LuExternalLink, LuPackage } from 
 import { useGetProductsQuery, useGetProductStatsQuery, useDeleteProductMutation } from '@/redux/api/productApi';
 import { toast } from 'react-hot-toast';
 import BulkUploadModal from './BulkUploadModal';
+import { useGetUnitsQuery, findUnit } from '@/redux/api/unitApi';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
 import {
     PageHeader, Btn, SearchInput, SelectPill, FilterBar, StatTile, Badge, TableCard, TH, TD, TR,
     EmptyRow, SkeletonRows, Pager, RowMenu, taka, fmtDateTime, type Tone,
@@ -15,12 +18,6 @@ import {
 
 const PAGE_SIZE = 10;
 
-// Until the Units module exists, products carry their unit as a word; show it short.
-const UNIT_SHORT: Record<string, string> = {
-    piece: 'PC', pcs: 'PC', pc: 'PC', kg: 'KG', gram: 'G', g: 'G', liter: 'L', litre: 'L', l: 'L',
-    pack: 'PACK', pair: 'PAIR', box: 'BOX', dozen: 'DZ', set: 'SET',
-};
-const unitShort = (u?: string) => UNIT_SHORT[(u || 'piece').toLowerCase()] || (u || 'PC').toUpperCase();
 
 const STATUS: Record<string, { label: string; tone: Tone }> = {
     active: { label: 'Active', tone: 'green' },
@@ -43,6 +40,8 @@ export default function ProductsPage() {
     const q = useDebounced(search);
 
     const { data, isLoading, isFetching } = useGetProductsQuery({
+        // Drafts are listed only here (and only for a signed-in admin) — never on the storefront.
+        includeDrafts: true,
         searchTerm: q || undefined,
         status: status !== 'all' ? status : undefined,
         sort: '-createdAt',
@@ -51,6 +50,11 @@ export default function ProductsPage() {
     });
     const { data: statsData } = useGetProductStatsQuery(undefined);
     const [deleteProduct] = useDeleteProductMutation();
+    // Editors add and update products; deleting and bulk upload are for admins.
+    const isEditor = useSelector((s: RootState) => s.auth.user?.role) === 'editor';
+    const { data: units } = useGetUnitsQuery({ scope: 'all' });
+    // Products store their unit as a word (e.g. "piece"); show the unit's short name.
+    const unitShort = (u?: string) => findUnit(units, u || 'piece')?.shortName || (u || 'piece').toUpperCase();
 
     const products: any[] = data?.data || [];
     const meta = data?.meta || { total: 0, totalPages: 1 };
@@ -74,7 +78,7 @@ export default function ProductsPage() {
                 title="Products"
                 subtitle="Manage the catalog - simple products and attribute-based variants."
                 actions={<>
-                    <Btn icon={<LuUpload size={15} />} onClick={() => setShowBulkUpload(true)}>Bulk upload</Btn>
+                    {!isEditor && <Btn icon={<LuUpload size={15} />} onClick={() => setShowBulkUpload(true)}>Bulk upload</Btn>}
                     <Btn variant="primary" icon={<LuPlus size={16} />} href="/dashboard/admin/products/new">Add product</Btn>
                 </>}
             />
@@ -167,7 +171,7 @@ export default function ProductsPage() {
                                         <RowMenu items={[
                                             { label: 'Edit', icon: <LuPencil size={15} />, href: `/dashboard/admin/products/new?id=${p._id}` },
                                             { label: 'View in store', icon: <LuExternalLink size={15} />, href: `/product/${p.slug}`, hidden: !p.slug || p.status !== 'active' },
-                                            { label: 'Delete', icon: <LuTrash2 size={15} />, onClick: () => handleDelete(p), danger: true },
+                                            { label: 'Delete', icon: <LuTrash2 size={15} />, onClick: () => handleDelete(p), danger: true, hidden: isEditor },
                                         ]} />
                                     </td>
                                 </tr>

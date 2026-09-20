@@ -33,6 +33,10 @@ const packageSchema = new Schema({
     consignmentId: { type: String, default: '' },   // Steadfast consignment id
     courierStatus: { type: String, default: '' },    // raw Steadfast delivery_status
     courierBookedAt: { type: Date },
+    // Courier COD handling charge (basis points, 100 = 1%) copied from shipping
+    // settings when the parcel is booked, so a later rate change in Settings never
+    // alters an already-booked parcel. Unset = booked before this snapshot existed.
+    codChargeBps: { type: Number },
     timeline: { type: [timelineSchema], default: [] },
 }, { _id: true });
 

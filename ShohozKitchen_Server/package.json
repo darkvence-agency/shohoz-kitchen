@@ -16,7 +16,10 @@
         "lint": "eslint src --ignore-path .eslintignore --ext .ts",
         "lint:fix": "npx eslint src --fix",
         "prettier:fix": "npx prettier --write src",
-        "seed:demo": "ts-node --transpile-only src/seed-demo.ts"
+        "seed:demo": "ts-node --transpile-only src/seed-demo.ts",
+        "demo:seed": "ts-node --transpile-only src/demo-data.ts seed",
+        "demo:clean": "ts-node --transpile-only src/demo-data.ts clean",
+        "demo:dry": "ts-node --transpile-only src/demo-data.ts dry"
     },
     "keywords": [
         "ecommerce",

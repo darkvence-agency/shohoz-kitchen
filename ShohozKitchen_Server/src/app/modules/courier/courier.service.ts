@@ -3,6 +3,7 @@ import { Order } from '../order/order.model';
 import AppError from '../../utils/AppError';
 import SteadfastService from './steadfast.service';
 import OrderService from '../order/order.service';
+import { getCodChargeBps } from '../shipping/shipping.service';
 
 // ── Status sets shared across booking / listing / sync ───────────────
 const BOOKABLE_STATUSES = ['pending', 'confirmed', 'processing'];          // can still go to courier
@@ -45,6 +46,10 @@ async function bookPackageCore(order: any, packageId: string) {
     const a = order.shippingAddress;
     const fullAddress = [a.address, a.area, a.city, a.postalCode].filter(Boolean).join(', ');
 
+    // Snapshot the current COD handling rate. Read BEFORE booking, so a settings
+    // read failure can never leave a Steadfast consignment we have no record of.
+    const codChargeBps = await getCodChargeBps();
+
     const consignment = await SteadfastService.createConsignment({
         invoice: `${order.orderId}-${String(pkg._id).slice(-5)}`,
         recipientName: a.fullName,
@@ -59,6 +64,7 @@ async function bookPackageCore(order: any, packageId: string) {
     pkg.carrier = 'Steadfast';
     pkg.courierStatus = String(consignment.status || 'in_review');
     pkg.courierBookedAt = new Date();
+    pkg.codChargeBps = codChargeBps;   // later rate changes never alter this parcel
     if (BOOKABLE_STATUSES.includes(pkg.status)) pkg.status = 'shipped';
     pkg.timeline.push({ status: 'shipped', note: `Booked with Steadfast — tracking ${pkg.trackingNumber}` });
     return pkg;

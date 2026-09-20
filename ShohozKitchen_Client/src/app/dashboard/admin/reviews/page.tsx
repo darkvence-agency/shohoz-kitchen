@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import {
     FiStar,
@@ -80,9 +81,22 @@ const ReplyModal = ({
     );
 };
 
+const REVIEW_STATUSES = ['pending', 'approved', 'rejected'];
+
+// useSearchParams needs a Suspense boundary (Next.js falls back to client rendering up to it).
 export default function ReviewsPage() {
+    return (
+        <Suspense fallback={null}>
+            <ReviewsPageInner />
+        </Suspense>
+    );
+}
+
+function ReviewsPageInner() {
+    // ?status=pending (the Dashboard's "Reviews awaiting moderation" link) pre-selects the filter.
+    const statusParam = useSearchParams().get('status');
     const [page, setPage] = useState(1);
-    const [statusFilter, setStatusFilter] = useState('');
+    const [statusFilter, setStatusFilter] = useState(statusParam && REVIEW_STATUSES.includes(statusParam) ? statusParam : '');
     const [isReplyModalOpen, setIsReplyModalOpen] = useState(false);
     const [selectedReview, setSelectedReview] = useState<any>(null);
 

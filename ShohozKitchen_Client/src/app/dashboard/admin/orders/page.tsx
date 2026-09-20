@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { LuPlus, LuDownload, LuEye, LuExternalLink, LuStickyNote, LuX, LuPackage } from 'react-icons/lu';
+import { LuPlus, LuDownload, LuEye, LuExternalLink, LuStickyNote, LuX, LuPackage, LuBarcode, LuReceiptText } from 'react-icons/lu';
 import {
     useGetAdminOrdersQuery,
     useUpdateOrderStatusMutation,
@@ -15,9 +16,12 @@ import { useGetProductsQuery } from '@/redux/api/productApi';
 import { toast } from 'react-hot-toast';
 import { ORDER_STATUS_CONFIG, getStatusConfig, paymentMethodLabel } from '@/lib/orderStatus';
 import {
-    PageHeader, Btn, SearchInput, SelectPill, FilterBar, StatTile, BadgeSelect, TableCard,
+    PageHeader, Btn, SearchInput, SelectPill, FilterBar, StatTile, Badge, BadgeSelect, TableCard,
     TH, TD, TR, EmptyRow, SkeletonRows, Pager, RowMenu, Modal, TEXTAREA, taka, fmtDateTime, cx, type Tone,
 } from '@/components/admin/ui';
+import PrintOrdersModal, { type PrintJob, type PrintKind } from '@/components/admin/print/PrintOrdersModal';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
 
 const PAGE_SIZE = 10;
 
@@ -58,9 +62,22 @@ function useDebounced<T>(value: T, ms = 300) {
     return v;
 }
 
+// useSearchParams needs a Suspense boundary (Next.js falls back to client rendering up to it).
 export default function OrdersPage() {
+    return (
+        <Suspense fallback={null}>
+            <OrdersPageInner />
+        </Suspense>
+    );
+}
+
+function OrdersPageInner() {
+    // ?status=pending (the Dashboard's links) pre-selects the status filter.
+    const statusParam = useSearchParams().get('status');
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState(
+        statusParam && Object.prototype.hasOwnProperty.call(ORDER_STATUS_CONFIG, statusParam) ? statusParam : 'all',
+    );
     const [paymentFilter, setPaymentFilter] = useState('all');
     const [productFilter, setProductFilter] = useState('all');
     const [page, setPage] = useState(1);
@@ -68,6 +85,7 @@ export default function OrdersPage() {
     const [bulkStatus, setBulkStatus] = useState('');
     const [noteFor, setNoteFor] = useState<any>(null);
     const [noteText, setNoteText] = useState('');
+    const [printJob, setPrintJob] = useState<PrintJob | null>(null);
     const q = useDebounced(search);
 
     const { data: ordersData, isLoading, isFetching } = useGetAdminOrdersQuery({
@@ -82,6 +100,8 @@ export default function OrdersPage() {
     const { data: productsData } = useGetProductsQuery({ limit: 200, sort: 'name', fields: 'name' });
     const [updateStatus] = useUpdateOrderStatusMutation();
     const [updatePayment] = useUpdatePaymentStatusMutation();
+    // Editors confirm orders and print; payments and creating orders are for admins.
+    const isEditor = useSelector((s: RootState) => s.auth.user?.role) === 'editor';
     const [addNote, { isLoading: isSavingNote }] = useAddAdminNoteMutation();
 
     const orders: any[] = ordersData?.data || [];
@@ -159,6 +179,13 @@ export default function OrdersPage() {
     });
     const clearSelection = () => setSelected(new Set());
 
+    // Labels / invoices for the selected orders, in the order the table shows them.
+    const printSelected = (kind: PrintKind) => {
+        const shown = orders.filter((o: any) => selected.has(o._id)).map((o: any) => o._id as string);
+        const others = Array.from(selected).filter((id) => !shown.includes(id));
+        setPrintJob({ kind, ids: [...shown, ...others] });
+    };
+
     const handleBulkStatus = async (newStatus: string) => {
         const ids = Array.from(selected);
         if (!ids.length || !newStatus) return;
@@ -198,6 +225,8 @@ export default function OrdersPage() {
         <RowMenu items={[
             { label: 'Open full page', icon: <LuExternalLink size={15} />, href: `/dashboard/admin/orders/${o._id}` },
             { label: 'Add note', icon: <LuStickyNote size={15} />, onClick: () => { setNoteFor(o); setNoteText(''); } },
+            { label: 'Print label', icon: <LuBarcode size={15} />, onClick: () => setPrintJob({ kind: 'labels', ids: [o._id] }) },
+            { label: 'Print invoice', icon: <LuReceiptText size={15} />, onClick: () => setPrintJob({ kind: 'invoices', ids: [o._id] }) },
         ]} />
     );
 
@@ -208,7 +237,7 @@ export default function OrdersPage() {
                 subtitle="Customer sales orders - from the store and taken by phone."
                 actions={<>
                     <Btn icon={<LuDownload size={15} />} onClick={() => exportOrdersCsv(orders, `page-${page}`)}>Export</Btn>
-                    <Btn variant="primary" icon={<LuPlus size={16} />} href="/dashboard/admin/orders/new">New order</Btn>
+                    {!isEditor && <Btn variant="primary" icon={<LuPlus size={16} />} href="/dashboard/admin/orders/new">New order</Btn>}
                 </>}
             />
 
@@ -249,6 +278,8 @@ export default function OrdersPage() {
                             onChange={handleBulkStatus}
                             options={[{ value: '', label: 'Change status to…' }, ...STATUS_OPTIONS]}
                         />
+                        <Btn icon={<LuBarcode size={15} />} onClick={() => printSelected('labels')}>Print labels</Btn>
+                        <Btn icon={<LuReceiptText size={15} />} onClick={() => printSelected('invoices')}>Print invoices</Btn>
                         <Btn icon={<LuDownload size={15} />} onClick={() => exportOrdersCsv(orders.filter((o) => selected.has(o._id)), 'selected')}>Export selected</Btn>
                         <Btn variant="ghost" icon={<LuX size={15} />} onClick={clearSelection}>Clear</Btn>
                     </div>
@@ -319,8 +350,10 @@ export default function OrdersPage() {
                                             onChange={(v) => handleStatusChange(o._id, v)} options={STATUS_OPTIONS} />
                                     </td>
                                     <td className={TD}>
+                                        {isEditor ? <Badge tone={pay.tone}>{pay.label}</Badge> : (
                                         <BadgeSelect ariaLabel="Payment status" tone={pay.tone} value={o.paymentStatus || 'pending'}
                                             onChange={(v) => handlePaymentChange(o._id, v)} options={PAYMENT_OPTIONS} />
+                                        )}
                                         <p className="mt-1 text-xs text-gray-400">{o.paymentMethod ? paymentMethodLabel(o.paymentMethod) : '—'}</p>
                                     </td>
                                     <td className={`${TD} text-right`} title={(o.items || []).map((it: any) => `${it.quantity} × ${it.name}`).join('\n')}>{itemCount}</td>
@@ -381,8 +414,10 @@ export default function OrdersPage() {
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
                                     <BadgeSelect ariaLabel="Order status" tone={ORDER_TONE[o.status] || 'gray'} value={o.status || 'pending'}
                                         onChange={(v) => handleStatusChange(o._id, v)} options={STATUS_OPTIONS} />
+                                    {isEditor ? <Badge tone={pay.tone}>{pay.label}</Badge> : (
                                     <BadgeSelect ariaLabel="Payment status" tone={pay.tone} value={o.paymentStatus || 'pending'}
                                         onChange={(v) => handlePaymentChange(o._id, v)} options={PAYMENT_OPTIONS} />
+                                    )}
                                     <span className="text-xs text-gray-400">{o.paymentMethod ? paymentMethodLabel(o.paymentMethod) : ''}</span>
                                 </div>
                             </div>
@@ -413,6 +448,8 @@ export default function OrdersPage() {
                 />
                 <p className="mt-2 text-xs text-gray-400">Staff-only. It is added to the order’s timeline.</p>
             </Modal>
+
+            <PrintOrdersModal job={printJob} onClose={() => setPrintJob(null)} />
         </div>
     );
 }

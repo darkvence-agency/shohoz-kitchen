@@ -35,7 +35,8 @@ const productSchema = new Schema(
         price:         { type: Number, required: [true, 'Price is required'], min: 0 },
         originalPrice: { type: Number, default: null },
         discount:      { type: Number, default: 0, min: 0, max: 100 }, // auto-calculated from originalPrice vs price
-        costPrice:     { type: Number, default: 0, min: 0 }, // internal cost (never shown publicly)
+        // Moving-average unit cost in BDT, maintained by Inventory → stock-in (never shown publicly).
+        costPrice:     { type: Number, default: 0, min: 0 },
 
         // ── Offer validity window ───────────────────────────────
         offerStartDate: { type: Date, default: null },

@@ -10,13 +10,14 @@ import {
     LuUsers, LuUserPen, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
     LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight,
     LuReceipt, LuHandCoins, LuWallet, LuSettings,
-    LuMapPin, LuZap, LuCreditCard, LuMessageCircle, LuMail, LuLayoutTemplate, LuUser, LuShield,
+    LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuShield,
     LuPanelLeft, LuChevronRight, LuLogOut, LuX,
 } from 'react-icons/lu';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import Logo from '@/components/shared/Logo';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
+import { ADMIN_ROOT, ROLE_LABEL, canOpen, homeFor } from './access';
 
 interface AdminLayoutProps { children: React.ReactNode; }
 
@@ -43,14 +44,16 @@ const STATUS_TITLE: Record<MenuStatus, string> = {
     extra: 'Extra — not in the client design',
 };
 
-type MenuItem = { name: string; href: string; icon: IconType; status: MenuStatus; superadminOnly?: boolean };
+// Who sees an item follows the page rules in ./access (canOpen), so the menu and the
+// pages never disagree.
+type MenuItem = { name: string; href: string; icon: IconType; status: MenuStatus };
 
 // Grouped exactly as the client's screenshots show the sidebar.
 const menuSections: { label: string; items: MenuItem[] }[] = [
     {
         label: '',
         items: [
-            { name: 'Dashboard', href: '/dashboard/admin', icon: LuLayoutDashboard, status: 'partial' },
+            { name: 'Dashboard', href: '/dashboard/admin', icon: LuLayoutDashboard, status: 'ok' },
         ],
     },
     {
@@ -58,8 +61,8 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
         items: [
             { name: 'Products', href: '/dashboard/admin/products', icon: LuPackage, status: 'ok' },
             { name: 'Categories', href: '/dashboard/admin/categories', icon: LuLayoutGrid, status: 'ok' },
-            { name: 'Units', href: '', icon: LuRuler, status: 'new' },
-            { name: 'Attributes', href: '', icon: LuTags, status: 'partial' },
+            { name: 'Units', href: '/dashboard/admin/units', icon: LuRuler, status: 'ok' },
+            { name: 'Attributes', href: '/dashboard/admin/attributes', icon: LuTags, status: 'ok' },
         ],
     },
     {
@@ -68,61 +71,64 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
             { name: 'Customers', href: '/dashboard/admin/customers', icon: LuUsers, status: 'ok' },
             { name: 'Update requests', href: '', icon: LuUserPen, status: 'new' },
             { name: 'Orders', href: '/dashboard/admin/orders', icon: LuShoppingCart, status: 'ok' },
-            { name: 'Reports', href: '/dashboard/admin/analytics', icon: LuChartColumn, status: 'partial' },
+            { name: 'Reports', href: '/dashboard/admin/analytics', icon: LuChartColumn, status: 'ok' },
             { name: 'Reviews', href: '/dashboard/admin/reviews', icon: LuStar, status: 'ok' },
             { name: 'Coupons', href: '/dashboard/admin/coupons', icon: LuTicketPercent, status: 'ok' },
             { name: 'Returns', href: '/dashboard/admin/returns', icon: LuUndo2, status: 'ok' },
-            { name: 'Fraud check', href: '', icon: LuShieldAlert, status: 'new' },
+            { name: 'Fraud check', href: '/dashboard/admin/fraud-check', icon: LuShieldAlert, status: 'ok' },
         ],
     },
     {
         label: 'Procurement',
         items: [
-            { name: 'Suppliers', href: '', icon: LuStore, status: 'new' },
-            { name: 'Purchases', href: '', icon: LuTruck, status: 'new' },
+            { name: 'Suppliers', href: '/dashboard/admin/suppliers', icon: LuStore, status: 'ok' },
+            { name: 'Purchases', href: '/dashboard/admin/purchases', icon: LuTruck, status: 'ok' },
         ],
     },
     {
         label: 'Inventory',
         items: [
-            { name: 'Warehouses', href: '', icon: LuWarehouse, status: 'new' },
-            { name: 'Inventory', href: '', icon: LuBoxes, status: 'partial' },
-            { name: 'Transfers', href: '', icon: LuArrowLeftRight, status: 'new' },
+            { name: 'Warehouses', href: '/dashboard/admin/warehouses', icon: LuWarehouse, status: 'ok' },
+            { name: 'Inventory', href: '/dashboard/admin/inventory', icon: LuBoxes, status: 'ok' },
+            { name: 'Transfers', href: '/dashboard/admin/transfers', icon: LuArrowLeftRight, status: 'ok' },
         ],
     },
     {
         label: 'Accounts',
         items: [
-            { name: 'Overview', href: '', icon: LuLayoutGrid, status: 'new' },
-            { name: 'Expenses', href: '', icon: LuReceipt, status: 'new' },
-            { name: 'Investors', href: '', icon: LuHandCoins, status: 'new' },
-            { name: 'Courier payouts', href: '/dashboard/admin/courier', icon: LuWallet, status: 'partial' },
+            { name: 'Overview', href: '/dashboard/admin/accounts', icon: LuLayoutGrid, status: 'ok' },
+            { name: 'Expenses', href: '/dashboard/admin/expenses', icon: LuReceipt, status: 'ok' },
+            { name: 'Investors', href: '/dashboard/admin/investors', icon: LuHandCoins, status: 'ok' },
+            { name: 'Courier payouts', href: '/dashboard/admin/courier-payouts', icon: LuWallet, status: 'partial' },
         ],
     },
     {
         label: 'Administration',
         items: [
-            { name: 'Settings', href: '/dashboard/admin/settings', icon: LuSettings, status: 'partial' },
+            { name: 'Settings', href: '/dashboard/admin/settings', icon: LuSettings, status: 'ok' },
         ],
     },
     // Ours — kept, but absent from the client's screenshots.
     {
         label: 'Extra (ours)',
         items: [
-            { name: 'Shipping & Zones', href: '/dashboard/admin/shipping', icon: LuMapPin, status: 'extra' },
+            // Steadfast parcel booking/sync — was reached through "Courier payouts" until that page existed.
+            { name: 'Courier parcels', href: '/dashboard/admin/courier', icon: LuTruck, status: 'extra' },
             { name: 'Offers & Flash Sales', href: '/dashboard/admin/offers', icon: LuZap, status: 'extra' },
             { name: 'Payments', href: '/dashboard/admin/payments', icon: LuCreditCard, status: 'extra' },
-            { name: 'Support', href: '/dashboard/admin/messages', icon: LuMessageCircle, status: 'extra' },
-            { name: 'Inquiries', href: '/dashboard/admin/inquiries', icon: LuMail, status: 'extra' },
             { name: 'Site Content', href: '/dashboard/admin/site-content', icon: LuLayoutTemplate, status: 'extra' },
             { name: 'Profile', href: '/dashboard/admin/profile', icon: LuUser, status: 'extra' },
-            { name: 'Roles & Permissions', href: '/dashboard/admin/roles', icon: LuShield, status: 'extra', superadminOnly: true },
+            { name: 'Roles & Permissions', href: '/dashboard/admin/roles', icon: LuShield, status: 'extra' },
         ],
     },
 ];
 
 const allMenuItems = menuSections.flatMap((s) => s.items).filter((i) => i.href);
-const ROOT = '/dashboard/admin';
+const ROOT = ADMIN_ROOT;
+
+/** A menu item shows when the role may open its page (unbuilt ones: super admin and admin only). */
+const showItem = (role: string | undefined, item: MenuItem) =>
+    item.href ? canOpen(role, item.href) : role === 'superadmin' || role === 'admin';
 
 /** The menu item a path belongs to — the longest href that prefixes it. */
 function matchItem(pathname: string): MenuItem | undefined {
@@ -166,7 +172,7 @@ function Sidebar({ pathname, role, onClose, onLogout }: {
         <div className="flex h-full flex-col">
             {/* Brand */}
             <div className="flex h-16 shrink-0 items-center justify-between px-4">
-                <Link href={ROOT} className="flex items-center gap-2.5">
+                <Link href={homeFor(role)} className="flex items-center gap-2.5">
                     <Logo iconOnly size={34} />
                     <span className="leading-tight">
                         <span className="block text-[15px] font-semibold text-gray-900">Shohoz Kitchen</span>
@@ -182,10 +188,12 @@ function Sidebar({ pathname, role, onClose, onLogout }: {
 
             {/* Nav */}
             <nav className="scrollbar-hide flex-1 overflow-y-auto px-3 pb-3">
-                {menuSections.map((section) => (
+                {menuSections.map((section) => ({ section, items: section.items.filter((i) => showItem(role, i)) }))
+                    .filter(({ items }) => items.length > 0)
+                    .map(({ section, items }) => (
                     <div key={section.label || 'main'} className="mb-1">
                         {section.label && <p className="px-3 pb-1 pt-4 text-xs font-medium text-gray-500">{section.label}</p>}
-                        {section.items.filter((i) => !i.superadminOnly || role === 'superadmin').map((item) => {
+                        {items.map((item) => {
                             const on = isActive(item);
                             // Nothing is built behind a red item yet, so it must not navigate.
                             const unbuilt = item.status === 'new' || !item.href;
@@ -260,6 +268,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     const role = user?.role;
 
     useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+    // A page this role may not open (typed URL, old link) → the role's own start page.
+    const allowed = canOpen(role, pathname);
+    useEffect(() => {
+        if (role && !allowed) router.replace(homeFor(role));
+    }, [role, allowed, router]);
 
     // Desktop collapse is a per-browser preference only.
     useEffect(() => {
@@ -336,8 +350,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                         >
                             <LuStore size={15} /> Store
                         </Link>
+                        {role && (
+                            <span className="hidden rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 md:inline">
+                                {ROLE_LABEL[role] || role}
+                            </span>
+                        )}
                         <span
-                            title={name}
+                            title={`${name}${role ? ` · ${ROLE_LABEL[role] || role}` : ''}`}
                             className="ml-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700"
                         >
                             {initials}
@@ -346,7 +365,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                 </header>
 
                 <main className="px-4 py-6 sm:px-6 lg:px-8">
-                    {children}
+                    {/* Nothing of a page this role may not open, even for a moment before the redirect. */}
+                    {allowed ? children : null}
                 </main>
             </div>
         </div>

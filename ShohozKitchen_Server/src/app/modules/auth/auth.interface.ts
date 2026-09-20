@@ -1,7 +1,7 @@
 export interface IJwtPayload {
     userId: string;
     email: string;
-    role: 'superadmin' | 'admin' | 'user';
+    role: 'superadmin' | 'admin' | 'editor' | 'user';
     iat?: number;
     exp?: number;
 }

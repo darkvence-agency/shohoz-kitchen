@@ -6,8 +6,6 @@ import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
 
 const DEFAULT_HERO_IMAGE = '/images/hero-01.png';
-/** Portrait-friendly crop of the same banner, for < 768px. */
-const MOBILE_HERO_IMAGE = '/images/hero-01-mobile.jpg';
 
 interface HeroSlide {
     _id?: string;
@@ -54,7 +52,6 @@ const HeroSection: React.FC = () => {
     }, [total, isHovered, nextSlide]);
 
     const currentSlide = slides[safeIndex] || slides[0];
-    const isDefaultSlide = currentSlide.imageUrl === DEFAULT_HERO_IMAGE;
 
     return (
         <section className="w-full">
@@ -62,7 +59,7 @@ const HeroSection: React.FC = () => {
                 up with the cards below it. Its width rule lives in globals.css. */}
             <div className="container mx-auto py-4 sm:py-5">
                 <div
-                    className="relative w-full h-[200px] min-[480px]:h-[260px] sm:h-[320px] md:h-[380px] lg:h-auto lg:aspect-[2293/590] rounded-md overflow-hidden bg-slate-100 group shadow-sm"
+                    className="relative w-full aspect-[3/1] lg:aspect-[2293/590] rounded-md overflow-hidden bg-slate-100 group shadow-sm"
                     onMouseEnter={() => setIsHovered(true)}
                     onMouseLeave={() => setIsHovered(false)}
                 >
@@ -72,26 +69,19 @@ const HeroSection: React.FC = () => {
                         className="block relative w-full h-full"
                         aria-label="Hero Banner"
                     >
-                        {/* The banner is 3.89:1 but the frame is ~1.7:1 on phones and
-                            tablets, so object-cover would crop ~28% off each side and
-                            eat the products. Serve a portrait-friendly crop below 768px
-                            and the wide one above it. Only the default banner has a
-                            mobile cut; admin-uploaded slides fall back to the wide file. */}
-                        <picture>
-                            {isDefaultSlide && (
-                                <source media="(max-width: 1023px)" srcSet={MOBILE_HERO_IMAGE} />
-                            )}
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                                key={currentSlide.imageUrl}
-                                src={currentSlide.imageUrl}
-                                alt="Shohoz Kitchen Hero Banner"
-                                className="w-full h-full object-cover object-center transition-opacity duration-500 ease-in-out"
-                                onError={(e) => {
-                                    (e.currentTarget as HTMLImageElement).src = DEFAULT_HERO_IMAGE;
-                                }}
-                            />
-                        </picture>
+                        {/* Phones and tablets show the same banner as the desktop. The frame
+                            follows the banner's own 3:1 shape there, so the whole banner
+                            (heading, model, badges) fits without being cropped. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            key={currentSlide.imageUrl}
+                            src={currentSlide.imageUrl}
+                            alt="Shohoz Kitchen Hero Banner"
+                            className="w-full h-full object-cover object-center transition-opacity duration-500 ease-in-out"
+                            onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = DEFAULT_HERO_IMAGE;
+                            }}
+                        />
                     </Link>
 
                     {/* Navigation Arrows (shown if multiple slides) */}

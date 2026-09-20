@@ -42,6 +42,15 @@ const shippingRateSchema = new Schema<IShippingRate>({
 export const ShippingRate = mongoose.model<IShippingRate>('ShippingRate', shippingRateSchema);
 
 // ── Shipping Settings (singleton — admin-tunable global rules) ──────
+
+/** Courier COD handling charge, in basis points (100 = 1%). Steadfast's standard rate. */
+export const DEFAULT_COD_CHARGE_BPS = 100;
+export const MAX_COD_CHARGE_BPS = 10000; // 100%
+
+/** Flat delivery charges (BDT) until the admin changes them in Settings → Business. */
+export const DEFAULT_INSIDE_DHAKA_RATE = 70;
+export const DEFAULT_OUTSIDE_DHAKA_RATE = 130;
+
 export interface IShippingSettings extends Document {
     _key: string;
     freeShippingThreshold: number;
@@ -51,17 +60,29 @@ export interface IShippingSettings extends Document {
     defaultEstimatedDays: string;
     quantityFreeShippingEnabled: boolean;
     minItemsForFreeShipping: number;
+    // What the courier keeps for collecting cash on delivery, applied to a parcel's
+    // collected amount minus its delivery charge. Integer basis points (100 = 1%).
+    // Snapshotted onto order.packages[].codChargeBps at booking time, so changing
+    // it only affects parcels booked afterwards.
+    codChargeBps: number;
 }
 
 const shippingSettingsSchema = new Schema<IShippingSettings>({
     _key: { type: String, default: 'main', unique: true },
     freeShippingThreshold: { type: Number, default: 5000 },
     freeShippingByThresholdEnabled: { type: Boolean, default: true },
-    defaultInsideDhakaRate: { type: Number, default: 60 },
-    defaultOutsideDhakaRate: { type: Number, default: 120 },
+    defaultInsideDhakaRate: { type: Number, default: DEFAULT_INSIDE_DHAKA_RATE },
+    defaultOutsideDhakaRate: { type: Number, default: DEFAULT_OUTSIDE_DHAKA_RATE },
     defaultEstimatedDays: { type: String, default: '3-5 days' },
     quantityFreeShippingEnabled: { type: Boolean, default: false },
     minItemsForFreeShipping: { type: Number, default: 0 },
+    codChargeBps: {
+        type: Number,
+        default: DEFAULT_COD_CHARGE_BPS,
+        min: 0,
+        max: MAX_COD_CHARGE_BPS,
+        validate: { validator: Number.isInteger, message: 'codChargeBps must be a whole number of basis points' },
+    },
 }, { timestamps: true });
 
 export const ShippingSettings = mongoose.model<IShippingSettings>('ShippingSettings', shippingSettingsSchema);

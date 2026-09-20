@@ -6,6 +6,7 @@ import { useAppDispatch } from '@/redux/hooks';
 import { loginSuccess } from '@/redux/slices/authSlice';
 import { useGoogleLoginMutation } from '@/redux/api/authApi';
 import { toast } from 'react-hot-toast';
+import { canOpen, homeFor, isStaffRole } from '@/components/admin/access';
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 
@@ -77,9 +78,8 @@ const GoogleSignInButton: React.FC<Props> = ({ redirectPath, label = 'Continue w
                     style: { borderRadius: '10px', background: 'var(--color-primary)', color: '#fff' },
                     icon: '✅',
                 });
-                const isStaff = user.role === 'admin' || user.role === 'superadmin';
-                if (isStaff) {
-                    router.push(redirectPath && redirectPath.startsWith('/dashboard/admin') ? redirectPath : '/dashboard/admin');
+                if (isStaffRole(user.role)) {
+                    router.push(redirectPath && redirectPath.startsWith('/dashboard/admin') && canOpen(user.role, redirectPath) ? redirectPath : homeFor(user.role));
                 } else {
                     router.push(redirectPath || '/');
                 }

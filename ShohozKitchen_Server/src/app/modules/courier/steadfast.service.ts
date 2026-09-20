@@ -95,6 +95,53 @@ const SteadfastService = {
         if (!res.ok) throw new AppError(502, `Steadfast (HTTP ${res.status}): ${data?.message || 'failed to fetch balance.'}`);
         return data as { status: number; current_balance: number };
     },
+
+    // GET /payments/{payment_id} → one payment statement (with its consignments).
+    // READ-ONLY. The exact response shape is not pinned down in Steadfast's docs, so
+    // this returns the parsed JSON untouched and the caller maps it defensively
+    // (see courierPayout.service → mapStatement).
+    // Portal ids look like "SFC-31801786"; the API may want the bare number, so we
+    // try each candidate spelling and stop at the first one Steadfast recognises.
+    async getPayment(paymentId: string): Promise<{ id: string; data: any }> {
+        ensureConfigured();
+        const input = String(paymentId || '').trim();
+        const digits = input.replace(/^SFC-?/i, '');
+        const candidates = Array.from(new Set([digits, input].filter(Boolean)));
+
+        let lastStatus = 0;
+        let lastMessage = '';
+        for (const id of candidates) {
+            let res: Response;
+            try {
+                res = await fetch(`${base_url}/payments/${encodeURIComponent(id)}`, {
+                    headers: headers(),
+                    signal: AbortSignal.timeout(20000),
+                });
+            } catch (e: any) {
+                const timedOut = e?.name === 'TimeoutError' || e?.name === 'AbortError';
+                throw new AppError(502, timedOut
+                    ? 'Steadfast did not answer within 20 seconds. Try again in a minute.'
+                    : `Could not reach Steadfast: ${e?.message || 'network error'}.`);
+            }
+            const data: any = await res.json().catch(() => null);
+            // Steadfast sometimes answers HTTP 200 with its own status code in the body.
+            const bodyStatus = typeof data?.status === 'number' ? data.status : 200;
+            if (res.ok && data && bodyStatus < 400) return { id, data };
+
+            lastStatus = res.ok ? bodyStatus : res.status;
+            lastMessage = data?.message || data?.error || '';
+            if (lastStatus !== 404) break;   // only "not found" is worth retrying with another spelling
+        }
+
+        if (lastStatus === 404) {
+            throw new AppError(404, `Steadfast has no payment with id "${input}". Check the id on their portal and try again.`);
+        }
+        // Never forward Steadfast's own 401/403 — the browser would read it as our session expiring.
+        const authHint = (lastStatus === 401 || lastStatus === 403)
+            ? ' Check STEADFAST_API_KEY / STEADFAST_SECRET_KEY on the server.'
+            : '';
+        throw new AppError(502, `Steadfast (HTTP ${lastStatus}): ${lastMessage || 'could not fetch that payment.'}${authHint}`);
+    },
 };
 
 export default SteadfastService;

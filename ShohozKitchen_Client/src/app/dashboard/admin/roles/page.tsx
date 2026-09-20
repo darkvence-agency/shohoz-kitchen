@@ -8,97 +8,75 @@ import {
     FiX,
     FiShield,
     FiUser,
-    FiCheck,
     FiInfo,
     FiLock,
 } from 'react-icons/fi';
 import {
-    useGetPermissionsQuery,
     useGetStaffQuery,
     useUpdateUserRoleMutation,
 } from '@/redux/api/roleApi';
 import toast from 'react-hot-toast';
 import AuthGuard from '@/components/shared/AuthGuard';
+import { ROLE_ACCESS, ROLE_HINT, type StaffRole } from '@/components/admin/access';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const ROLE_META: Record<string, { label: string; color: string }> = {
     superadmin: { label: 'Super Admin', color: 'text-purple-700 bg-purple-50' },
     admin: { label: 'Admin', color: 'text-[var(--color-primary)] bg-[var(--color-primary-lightest)]' },
+    editor: { label: 'Editor', color: 'text-sky-700 bg-sky-50' },
     user: { label: 'User', color: 'text-gray-600 bg-gray-100' },
 };
 
-// Turn "manage_products" → "Manage Products" for the checkbox grid labels.
-const prettyPerm = (perm: string) =>
-    perm
-        .split('_')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
+const ROLE_OPTIONS = [
+    { id: 'editor', label: 'Editor', icon: FiShield, hint: 'Orders and products' },
+    { id: 'admin', label: 'Admin', icon: FiShield, hint: 'Runs the shop, no money' },
+    { id: 'superadmin', label: 'Super Admin', icon: FiLock, hint: 'Full unrestricted access' },
+] as const;
 
 const fullName = (u: any) =>
     [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email;
 
+const asStaffRole = (r?: string): StaffRole => (r === 'superadmin' || r === 'editor' ? r : 'admin');
+
+// Access follows the role (components/admin/access.ts on the client, authorizeRoles on
+// the server); there are no per-person permission switches.
 const RoleModal = ({
     isOpen,
     onClose,
     onSubmit,
     editing,
-    permissions,
-    isLoadingPermissions,
     isSaving,
 }: {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (data: { role: string; permissions: string[] }) => void;
     editing?: any;
-    permissions: string[];
-    isLoadingPermissions: boolean;
     isSaving: boolean;
 }) => {
-    const [role, setRole] = useState<'admin' | 'superadmin'>('admin');
-    const [selectedPerms, setSelectedPerms] = useState<string[]>([]);
+    const [role, setRole] = useState<StaffRole>('admin');
 
     useEffect(() => {
-        if (editing) {
-            setRole(editing.role === 'superadmin' ? 'superadmin' : 'admin');
-            setSelectedPerms(editing.permissions || []);
-        } else {
-            setRole('admin');
-            setSelectedPerms([]);
-        }
+        setRole(asStaffRole(editing?.role));
     }, [editing, isOpen]);
 
     if (!isOpen) return null;
-
-    const togglePerm = (perm: string) =>
-        setSelectedPerms((prev) =>
-            prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]
-        );
-
-    const submit = () => {
-        // Super admins implicitly have every permission, so we only send perms for admins.
-        onSubmit({ role, permissions: role === 'admin' ? selectedPerms : [] });
-    };
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
             <div className="bg-white rounded-md w-full max-w-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <div>
-                        <h3 className="font-bold text-gray-800 text-lg">Edit Role &amp; Permissions</h3>
+                        <h3 className="font-bold text-gray-800 text-lg">Change role</h3>
                         <p className="text-xs text-gray-400 mt-0.5">{editing ? fullName(editing) : ''} · {editing?.email}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><FiX size={20} /></button>
+                    <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-gray-100 rounded-full transition-colors"><FiX size={20} /></button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-5 custom-scrollbar">
-                    {/* Role selection */}
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Role</label>
-                        <div className="grid grid-cols-2 gap-3">
-                            {([
-                                { id: 'admin', label: 'Admin', icon: FiShield, hint: 'Granular permissions below' },
-                                { id: 'superadmin', label: 'Super Admin', icon: FiLock, hint: 'Full unrestricted access' },
-                            ] as const).map((option) => (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {ROLE_OPTIONS.map((option) => (
                                 <button
                                     key={option.id}
                                     type="button"
@@ -115,52 +93,23 @@ const RoleModal = ({
                         </div>
                     </div>
 
-                    {/* Permissions grid */}
+                    {/* What this role can do (the server enforces the same rules) */}
                     <div className="space-y-2 border-t border-gray-100 pt-4">
-                        <div className="flex justify-between items-center">
-                            <label className="text-xs font-bold text-gray-500 uppercase">Permissions</label>
-                            <span className="text-[10px] font-bold text-[var(--color-primary)] bg-[var(--color-primary-lightest)] px-2 py-0.5 rounded-full">
-                                {role === 'superadmin' ? 'All (Super Admin)' : `${selectedPerms.length} Selected`}
-                            </span>
-                        </div>
-                        {role === 'superadmin' ? (
-                            <div className="flex items-start gap-2 p-3 rounded-md bg-purple-50 text-purple-700 text-xs font-medium">
-                                <FiInfo size={14} className="mt-0.5 flex-shrink-0" />
-                                Super Admins automatically have every permission. Individual toggles are not required.
-                            </div>
-                        ) : isLoadingPermissions ? (
-                            <p className="text-[11px] text-gray-400 animate-pulse">Loading permissions...</p>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                                {permissions.map((perm) => {
-                                    const checked = selectedPerms.includes(perm);
-                                    return (
-                                        <label
-                                            key={perm}
-                                            className={`flex items-center gap-2.5 p-2.5 rounded-md border cursor-pointer transition-colors ${checked
-                                                ? 'bg-[var(--color-primary-lightest)] border-[var(--color-primary)]'
-                                                : 'bg-gray-50/40 border-gray-100 hover:bg-white hover:border-gray-200'}`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={checked}
-                                                onChange={() => togglePerm(perm)}
-                                                className="w-4 h-4 text-[var(--color-primary)] border-gray-300 rounded focus:ring-0"
-                                            />
-                                            <span className={`text-xs font-medium ${checked ? 'text-[var(--color-primary)]' : 'text-gray-700'}`}>
-                                                {prettyPerm(perm)}
-                                            </span>
-                                        </label>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <label className="text-xs font-bold text-gray-500 uppercase">Access</label>
+                        <ul className="space-y-1.5">
+                            {ROLE_ACCESS[role].map((line) => (
+                                <li key={line} className="flex items-start gap-2 text-xs text-gray-700">
+                                    <FiInfo size={13} className="mt-0.5 flex-shrink-0 text-gray-400" />
+                                    {line}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 </div>
                 <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/50">
                     <button onClick={onClose} className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors">Cancel</button>
                     <button
-                        onClick={submit}
+                        onClick={() => onSubmit({ role, permissions: [] })}
                         disabled={isSaving}
                         className="px-6 py-2 bg-[var(--color-primary)] text-white rounded-md text-sm font-bold shadow-md hover:bg-[var(--color-primary-dark)] transition-all disabled:opacity-60"
                     >
@@ -178,10 +127,7 @@ function RolesPageInner() {
     const [search, setSearch] = useState('');
 
     const { data: staffData, isLoading, refetch } = useGetStaffQuery(undefined);
-    const { data: permissionsData, isLoading: isLoadingPermissions } = useGetPermissionsQuery(undefined);
     const [updateUserRole, { isLoading: isSaving }] = useUpdateUserRoleMutation();
-
-    const permissions: string[] = permissionsData?.data || [];
 
     const handleSubmit = async (data: { role: string; permissions: string[] }) => {
         if (!editing) return;
@@ -208,7 +154,7 @@ function RolesPageInner() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Roles &amp; Permissions</h1>
-                    <p className="text-gray-500 mt-1">Manage admin staff roles and their access permissions</p>
+                    <p className="text-gray-500 mt-1">Who works in the admin panel, and what each role can open.</p>
                 </div>
                 <div className="flex gap-3">
                     <button onClick={() => refetch()}
@@ -218,10 +164,29 @@ function RolesPageInner() {
                 </div>
             </div>
 
-            {/* Super-admin note */}
+            {/* The three staff roles */}
+            <div className="grid gap-3 md:grid-cols-3">
+                {ROLE_OPTIONS.map((option) => (
+                    <div key={option.id} className="rounded-md border border-gray-200 bg-white p-4 shadow-sm">
+                        <div className="mb-2 flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${ROLE_META[option.id].color}`}>{option.label}</span>
+                        </div>
+                        <p className="mb-2 text-xs text-gray-500">{ROLE_HINT[option.id]}</p>
+                        <ul className="space-y-1">
+                            {ROLE_ACCESS[option.id].map((line) => (
+                                <li key={line} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                                    <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-gray-400" />
+                                    {line}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+
             <div className="flex items-start gap-2.5 p-3.5 rounded-md bg-blue-50 border border-blue-100 text-blue-700 text-sm">
                 <FiInfo size={16} className="mt-0.5 flex-shrink-0" />
-                <span>Only a <b>Super Admin</b> can change staff roles and permissions. Admins manage day-to-day operations limited to the permissions granted here.</span>
+                <span>Only a <b>Super Admin</b> can change roles. New staff are added from <b>Customers → Staff → Add staff</b>.</span>
             </div>
 
             <div className="bg-white p-4 rounded-md border border-gray-200 shadow-sm flex gap-4 items-center">
@@ -239,7 +204,7 @@ function RolesPageInner() {
                             <tr>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Staff Member</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Role</th>
-                                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Permissions</th>
+                                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Access</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                             </tr>
@@ -254,7 +219,6 @@ function RolesPageInner() {
                             ) : (
                                 filtered.map((u: any) => {
                                     const meta = ROLE_META[u.role] || ROLE_META.user;
-                                    const isSuper = u.role === 'superadmin';
                                     return (
                                         <tr key={u._id} className="hover:bg-gray-50/50">
                                             <td className="px-6 py-4">
@@ -276,23 +240,8 @@ function RolesPageInner() {
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${meta.color}`}>{meta.label}</span>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                {isSuper ? (
-                                                    <span className="text-xs text-purple-700 font-semibold flex items-center gap-1.5">
-                                                        <FiCheck size={12} /> All permissions
-                                                    </span>
-                                                ) : (u.permissions?.length || 0) === 0 ? (
-                                                    <span className="text-xs text-gray-400 italic">None assigned</span>
-                                                ) : (
-                                                    <div className="flex flex-wrap gap-1 max-w-md">
-                                                        {(u.permissions || []).slice(0, 4).map((p: string) => (
-                                                            <span key={p} className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-600">{prettyPerm(p)}</span>
-                                                        ))}
-                                                        {(u.permissions?.length || 0) > 4 && (
-                                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-[var(--color-primary-lightest)] text-[var(--color-primary)]">+{u.permissions.length - 4} more</span>
-                                                        )}
-                                                    </div>
-                                                )}
+                                            <td className="px-6 py-4 text-xs text-gray-500 max-w-xs">
+                                                {ROLE_HINT[asStaffRole(u.role)]}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${u.status === 'active' || !u.status ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -301,7 +250,7 @@ function RolesPageInner() {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    <button onClick={() => { setEditing(u); setIsModalOpen(true); }}
+                                                    <button onClick={() => { setEditing(u); setIsModalOpen(true); }} aria-label={`Change ${fullName(u)}'s role`}
                                                         className="p-2 text-gray-400 hover:text-[var(--color-primary)] bg-gray-50 rounded-md border border-gray-100 transition-colors"><FiEdit2 size={16} /></button>
                                                 </div>
                                             </td>
@@ -319,8 +268,6 @@ function RolesPageInner() {
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={handleSubmit}
                 editing={editing}
-                permissions={permissions}
-                isLoadingPermissions={isLoadingPermissions}
                 isSaving={isSaving}
             />
 

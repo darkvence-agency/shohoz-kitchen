@@ -1,4 +1,7 @@
-import { ShippingZone, ShippingRate, ShippingSettings, IShippingSettings } from './shipping.model';
+import {
+    ShippingZone, ShippingRate, ShippingSettings, IShippingSettings, DEFAULT_COD_CHARGE_BPS,
+    DEFAULT_INSIDE_DHAKA_RATE, DEFAULT_OUTSIDE_DHAKA_RATE,
+} from './shipping.model';
 
 export type FreeReason = 'product' | 'coupon' | 'threshold' | 'quantity' | null;
 
@@ -14,7 +17,15 @@ export interface ShippingQuoteInput {
     // Explicit zone chosen by the customer at checkout (deterministic — preferred
     // over fuzzy city matching). Empty/absent → fall back to city match / default.
     zoneId?: string;
+    // Delivery area the customer picked at checkout. When set, the flat Inside /
+    // Outside Dhaka charge from Settings applies (no guessing from the city text).
+    area?: DeliveryArea;
 }
+
+export const DELIVERY_AREAS = ['inside_dhaka', 'outside_dhaka'] as const;
+export type DeliveryArea = (typeof DELIVERY_AREAS)[number];
+export const DELIVERY_AREA_LABEL: Record<DeliveryArea, string> = { inside_dhaka: 'Inside Dhaka', outside_dhaka: 'Outside Dhaka' };
+export const isDeliveryArea = (v: unknown): v is DeliveryArea => DELIVERY_AREAS.includes(v as DeliveryArea);
 
 export interface ShippingQuoteResult {
     shippingCost: number;
@@ -40,14 +51,26 @@ export async function updateSettings(payload: Partial<IShippingSettings>): Promi
         'freeShippingThreshold', 'freeShippingByThresholdEnabled',
         'defaultInsideDhakaRate', 'defaultOutsideDhakaRate', 'defaultEstimatedDays',
         'quantityFreeShippingEnabled', 'minItemsForFreeShipping',
+        'codChargeBps',
     ];
     const $set: any = {};
     for (const k of allowed) if (payload[k] !== undefined) $set[k] = payload[k];
     return await ShippingSettings.findOneAndUpdate(
         { _key: 'main' },
         { $set, $setOnInsert: { _key: 'main' } },
-        { new: true, upsert: true, setDefaultsOnInsert: true },
+        // runValidators: enforce the schema's codChargeBps range/integer rule too.
+        { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true },
     ) as IShippingSettings;
+}
+
+/**
+ * Current courier COD handling charge in basis points (100 = 1%). Read at booking
+ * time and snapshotted onto the package, so later changes never touch booked parcels.
+ */
+export async function getCodChargeBps(): Promise<number> {
+    const settings = await getSettings();
+    const bps = Number(settings?.codChargeBps);
+    return Number.isInteger(bps) && bps >= 0 ? bps : DEFAULT_COD_CHARGE_BPS;
 }
 
 /**
@@ -62,7 +85,7 @@ export async function updateSettings(payload: Partial<IShippingSettings>): Promi
  * freeShippingMinimum); else default flat (inside/outside Dhaka) from settings.
  */
 export async function computeShippingCost(
-    { city, subtotal, items, totalQuantity, couponFreeShipping, zoneId }: ShippingQuoteInput,
+    { city, subtotal, items, totalQuantity, couponFreeShipping, zoneId, area }: ShippingQuoteInput,
 ): Promise<ShippingQuoteResult> {
     const sub = Number(subtotal) || 0;
     const cityStr = (city || '').toString().trim().toLowerCase();
@@ -75,8 +98,8 @@ export async function computeShippingCost(
     }
     const threshold = settings?.freeShippingThreshold ?? 5000;
     const thresholdEnabled = settings?.freeShippingByThresholdEnabled ?? true;
-    const insideRate = settings?.defaultInsideDhakaRate ?? 60;
-    const outsideRate = settings?.defaultOutsideDhakaRate ?? 120;
+    const insideRate = settings?.defaultInsideDhakaRate ?? DEFAULT_INSIDE_DHAKA_RATE;
+    const outsideRate = settings?.defaultOutsideDhakaRate ?? DEFAULT_OUTSIDE_DHAKA_RATE;
     const defaultDays = settings?.defaultEstimatedDays || '3-5 days';
     const qtyEnabled = settings?.quantityFreeShippingEnabled ?? false;
     const minItems = settings?.minItemsForFreeShipping ?? 0;
@@ -97,6 +120,17 @@ export async function computeShippingCost(
 
     // 4) Quantity threshold.
     if (qtyEnabled && minItems > 0 && Number(totalQuantity || 0) >= minItems) return free('quantity');
+
+    // 5a) Delivery area picked at checkout → the flat Inside / Outside Dhaka charge.
+    if (isDeliveryArea(area)) {
+        return {
+            shippingCost: area === 'inside_dhaka' ? insideRate : outsideRate,
+            estimatedDays: defaultDays,
+            freeShipping: false,
+            freeReason: null,
+            zoneName: DELIVERY_AREA_LABEL[area],
+        };
+    }
 
     // 5) Explicit zone selected at checkout (deterministic — no string guessing).
     if (zoneId) {
@@ -161,4 +195,4 @@ export async function computeShippingCost(
     };
 }
 
-export default { computeShippingCost, getSettings, updateSettings };
+export default { computeShippingCost, getSettings, updateSettings, getCodChargeBps };

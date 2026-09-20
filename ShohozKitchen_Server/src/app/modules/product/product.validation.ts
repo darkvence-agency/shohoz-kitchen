@@ -76,6 +76,11 @@ const productCreateShape = z.object({
     lowStockThreshold: z.coerce.number().min(0).optional(),
     unit: z.string().optional(),
 
+    // Shown on the product page ("N Sold", views): the admin's starting numbers.
+    // Orders add to totalSold and page visits add to viewCount from there.
+    totalSold: z.coerce.number().int('Sold must be a whole number').min(0, 'Sold cannot be negative').optional(),
+    viewCount: z.coerce.number().int('Views must be a whole number').min(0, 'Views cannot be negative').optional(),
+
     // Image Search / Filter
     tags:     z.array(z.string()).optional(),
     colors:   z.array(z.string()).optional(),

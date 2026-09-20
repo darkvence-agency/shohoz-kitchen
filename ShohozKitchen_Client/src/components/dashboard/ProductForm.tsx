@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
@@ -11,6 +11,7 @@ const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false, loadin
 import 'react-quill-new/dist/quill.snow.css';
 import Link from 'next/link';
 import { SingleImageUploader, MultipleImageUploader } from '@/components/ui/ImageUploader';
+import AttributeValuePicker from '@/components/dashboard/AttributeValuePicker';
 import {
     FiArrowLeft, FiSave, FiImage, FiX, FiPlus, FiInfo,
     FiSettings, FiDollarSign, FiTag, FiShield, FiTruck,
@@ -23,7 +24,12 @@ import {
     useGetProductByIdQuery
 } from '@/redux/api/productApi';
 import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
+import UnitSelect from '@/components/dashboard/UnitSelect';
 import { toast } from 'react-hot-toast';
+
+// Thumbnail of a draft quick-added from Inventory (served from /public; the server's
+// inventory.service DRAFT_PLACEHOLDER_THUMBNAIL). Never accepted as a product photo.
+const DRAFT_PLACEHOLDER_THUMBNAIL = '/images/placeholder-product.svg';
 
 // ── Toggle Switch Component ──────────────────────────────────
 const Toggle = ({ label, name, checked, onChange, color = 'bg-emerald-500' }: any) => (
@@ -94,6 +100,8 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
         insideTheBox: '',
         // Stock
         stock: '', lowStockThreshold: '', unit: 'piece',
+        // Shown on the product page ("N Sold", views) — starting numbers set by the admin
+        totalSold: '', viewCount: '',
         // Status
         status: 'active', visibility: 'visible',
         isFeatured: false, isNewProduct: true, isOnSale: false,
@@ -115,6 +123,13 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
         metaTitle: '', metaDescription: '', metaKeywords: [],
     });
 
+    // Stock as loaded. Inventory and orders change stock while this form is open, so a save
+    // sends stock only when it was changed here (see handleSubmit).
+    const loadedStock = useRef<{ stock: number; variants: Map<string, number> } | null>(null);
+    // Sold / views as loaded: sales and page visits raise them while the form is open,
+    // so a save sends them only when the admin changed them here.
+    const loadedCounters = useRef<{ totalSold: number; viewCount: number } | null>(null);
+
     // ── Validation Errors State ──
     const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -129,6 +144,13 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
     useEffect(() => {
         if (isEditing && productToEdit?.data) {
             const prod = productToEdit.data;
+            loadedStock.current = {
+                stock: Number(prod.stock ?? 0),
+                variants: new Map((prod.variants || [])
+                    .filter((v: any) => v?._id)
+                    .map((v: any) => [String(v._id), Number(v.stock ?? 0)])),
+            };
+            loadedCounters.current = { totalSold: Number(prod.totalSold ?? 0), viewCount: Number(prod.viewCount ?? 0) };
             // Format an ISO/Date value to yyyy-mm-dd for <input type="date">
             const toDateInput = (d: any) => {
                 if (!d) return '';
@@ -149,6 +171,8 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                 originalPrice: prod.originalPrice ?? '',
                 stock: prod.stock ?? '',
                 lowStockThreshold: prod.lowStockThreshold ?? '',
+                totalSold: prod.totalSold ?? 0,
+                viewCount: prod.viewCount ?? 0,
                 offerStartDate: toDateInput(prod.offerStartDate),
                 offerEndDate: toDateInput(prod.offerEndDate),
                 insideTheBox: prod.insideTheBox || '',
@@ -291,10 +315,17 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
             newErrors.thumbnail = 'Product thumbnail image is required';
         }
 
-        // Min 3 images: thumbnail counts as 1, gallery must supply at least 2 more
+        // Min 3 images: thumbnail counts as 1, gallery must supply at least 2 more.
+        // The placeholder a quick-added Inventory draft starts with is not a real photo: it
+        // may stay while the product is a draft, but never goes live on the storefront.
+        const publishing = formData.status !== 'draft';
+        const isPlaceholder = (u: string) => publishing && u === DRAFT_PLACEHOLDER_THUMBNAIL;
+        if (isPlaceholder((formData.thumbnail || '').trim())) {
+            newErrors.thumbnail = 'Replace the placeholder with a real product photo before publishing';
+        }
         const allImages = [formData.thumbnail, ...(formData.images || [])]
             .map((u: string) => (u || '').trim())
-            .filter((u: string) => u !== '');
+            .filter((u: string) => u !== '' && !isPlaceholder(u));
         if (allImages.length < 3) {
             newErrors.images = 'At least 3 images are required (thumbnail + 2 more)';
         }
@@ -367,7 +398,30 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
             payload.price = toRequiredNum(formData.price);
             payload.originalPrice = toOptionalNum(formData.originalPrice);
             payload.stock = toOptionalNum(formData.stock) ?? 0;
+            if (isEditing && loadedStock.current) {
+                // Send stock only when it was changed here, with the count it was changed
+                // from — the server refuses the save if the stock has moved since (a sale or
+                // an Inventory stock-in). Unchanged variant stock is left out, so the server
+                // keeps each variant's current count.
+                const loaded = loadedStock.current;
+                if (payload.stock === loaded.stock) delete payload.stock;
+                else payload.expectedStock = loaded.stock;
+                payload.variants = (payload.variants || []).map((v: any) => {
+                    const id = v?._id ? String(v._id) : '';
+                    if (!id || !loaded.variants.has(id) || Number(v.stock ?? 0) !== loaded.variants.get(id)) return v;
+                    const { stock: _unchangedStock, ...rest } = v;
+                    return rest;
+                });
+            }
             payload.lowStockThreshold = toOptionalNum(formData.lowStockThreshold) ?? 5;
+            // Sold / views: whole numbers ≥ 0; on edit only when changed here (see loadedCounters).
+            for (const key of ['totalSold', 'viewCount'] as const) {
+                const n = toOptionalNum(formData[key]);
+                const value = n === undefined ? undefined : Math.max(0, Math.round(n));
+                const unchanged = isEditing && loadedCounters.current && value === loadedCounters.current[key];
+                if (value === undefined || unchanged) delete payload[key];
+                else payload[key] = value;
+            }
             payload.dimensions = {
                 length: toOptionalNum(formData.dimensions?.length) ?? 0,
                 width: toOptionalNum(formData.dimensions?.width) ?? 0,
@@ -704,15 +758,14 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                             <Input label="Low Stock Alert" name="lowStockThreshold" type="number" placeholder="5" value={formData.lowStockThreshold} onChange={handleChange} />
                             <div className="space-y-2">
                                 <label className="text-sm font-semibold text-gray-700">Unit</label>
-                                <select name="unit" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[var(--color-primary)] cursor-pointer" value={formData.unit} onChange={handleChange}>
-                                    <option value="piece">Piece</option>
-                                    <option value="kg">Kg</option>
-                                    <option value="liter">Liter</option>
-                                    <option value="meter">Meter</option>
-                                    <option value="set">Set</option>
-                                    <option value="pair">Pair</option>
-                                    <option value="box">Box</option>
-                                </select>
+                                {/* Active units from Catalog → Units (the product's own unit always stays listed);
+                                    "+ Add new unit…" creates one there without leaving the form. */}
+                                <UnitSelect
+                                    value={formData.unit}
+                                    onChange={(unit) => setFormData((prev: any) => ({ ...prev, unit }))}
+                                    className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                                    inputClassName="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[var(--color-primary)]"
+                                />
                             </div>
                         </div>
                     </div>
@@ -773,38 +826,17 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                                     </span>
                                 ))}
                             </div>
-                            <div className="flex gap-2 items-center">
-                                <input type="color" id="varColorHex" defaultValue="#000000" className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer p-0.5 shrink-0" />
-                                <input type="text" id="varColorName" placeholder="Color নাম (e.g. Sky Blue)" className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[var(--color-primary)]"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const nameEl = document.getElementById('varColorName') as HTMLInputElement;
-                                            const hexEl = document.getElementById('varColorHex') as HTMLInputElement;
-                                            const name = nameEl.value.trim();
-                                            if (!name) return;
-                                            setFormData((prev: any) => ({
-                                                ...prev,
-                                                colors: [...prev.colors, name],
-                                                colorHex: [...prev.colorHex, hexEl.value],
-                                            }));
-                                            nameEl.value = '';
-                                        }
-                                    }}
-                                />
-                                <button type="button" onClick={() => {
-                                    const nameEl = document.getElementById('varColorName') as HTMLInputElement;
-                                    const hexEl = document.getElementById('varColorHex') as HTMLInputElement;
-                                    const name = nameEl.value.trim();
-                                    if (!name) return;
-                                    setFormData((prev: any) => ({
-                                        ...prev,
-                                        colors: [...prev.colors, name],
-                                        colorHex: [...prev.colorHex, hexEl.value],
-                                    }));
-                                    nameEl.value = '';
-                                }} className="px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-md text-sm font-bold hover:bg-[var(--color-primary-dark)] shrink-0">+ Add</button>
-                            </div>
+                            {/* Dropdown fed by Attributes → Color; a new colour typed here is saved there too. */}
+                            <AttributeValuePicker
+                                kind="color"
+                                selected={formData.colors}
+                                placeholder="Search or type a colour (e.g. Sky Blue)"
+                                onAdd={(name, hex) => setFormData((prev: any) => ({
+                                    ...prev,
+                                    colors: [...prev.colors, name],
+                                    colorHex: [...prev.colorHex, hex || '#000000'],
+                                }))}
+                            />
                         </div>
                         )}
 
@@ -822,29 +854,15 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                                     </span>
                                 ))}
                             </div>
-                            <div className="flex gap-2">
-                                <input type="text" id="varSizeName" placeholder="S, M, L, XL, XXL, Free Size..." className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-[var(--color-primary)]"
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const el = document.getElementById('varSizeName') as HTMLInputElement;
-                                            const val = el.value.trim();
-                                            if (val && !formData.sizes.includes(val)) {
-                                                setFormData((prev: any) => ({ ...prev, sizes: [...prev.sizes, val] }));
-                                            }
-                                            el.value = '';
-                                        }
-                                    }}
-                                />
-                                <button type="button" onClick={() => {
-                                    const el = document.getElementById('varSizeName') as HTMLInputElement;
-                                    const val = el.value.trim();
-                                    if (val && !formData.sizes.includes(val)) {
-                                        setFormData((prev: any) => ({ ...prev, sizes: [...prev.sizes, val] }));
-                                    }
-                                    el.value = '';
-                                }} className="px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-md text-sm font-bold hover:bg-[var(--color-primary-dark)] shrink-0">+ Add</button>
-                            </div>
+                            {/* Dropdown fed by Attributes → Size; a new size typed here is saved there too. */}
+                            <AttributeValuePicker
+                                kind="size"
+                                selected={formData.sizes}
+                                placeholder="Search or type a size (e.g. S, M, XL, 24 cm, 1.5 L)"
+                                onAdd={(val) => setFormData((prev: any) => (
+                                    prev.sizes.includes(val) ? prev : { ...prev, sizes: [...prev.sizes, val] }
+                                ))}
+                            />
                         </div>
                         )}
 
@@ -1126,6 +1144,18 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-gray-400 uppercase">AI Labels <span className="text-gray-300">(for image search)</span></label>
                             <input type="text" placeholder="e.g. machinery, compressor" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-md text-xs outline-none focus:border-indigo-400" value={formData.aiLabels.join(', ')} onChange={(e) => handleArrayChange('aiLabels', e.target.value)} />
+                        </div>
+                    </div>
+
+                    {/* ── Sold & views shown on the product page ───── */}
+                    <div className="bg-white p-6 rounded-md border border-gray-200 shadow-sm space-y-4">
+                        <h3 className="font-bold text-gray-800 flex items-center gap-2"><FiCheckCircle className="text-[var(--color-primary)]" /> Sold &amp; Views</h3>
+                        <p className="text-[11px] text-gray-400 -mt-2">
+                            Shown on the product page as “N Sold” and the eye count. Set a starting number here — every real order adds its quantity to Sold, and every visit to the product page adds one view.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Input label="Sold" name="totalSold" type="number" placeholder="0" value={formData.totalSold} onChange={handleChange} />
+                            <Input label="Views" name="viewCount" type="number" placeholder="0" value={formData.viewCount} onChange={handleChange} />
                         </div>
                     </div>
 

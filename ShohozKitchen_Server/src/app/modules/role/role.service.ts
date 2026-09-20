@@ -11,9 +11,9 @@ const RoleService = {
         return ALL_PERMISSIONS;
     },
 
-    // ── List all admin / superadmin staff ──
+    // ── List all staff: super admins, admins and editors ──
     async getStaff() {
-        return await User.find({ role: { $in: ['admin', 'superadmin'] } })
+        return await User.find({ role: { $in: ['superadmin', 'admin', 'editor'] } })
             .select(STAFF_FIELDS)
             .sort({ createdAt: -1 });
     },

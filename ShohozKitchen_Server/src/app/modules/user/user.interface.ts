@@ -18,7 +18,7 @@ export interface IUser extends Document {
     lastName: string;
     phone: string;
     avatar: string;
-    role: 'superadmin' | 'admin' | 'user';
+    role: 'superadmin' | 'admin' | 'editor' | 'user';
     permissions: string[];
     status: 'active' | 'blocked' | 'pending';
     isEmailVerified: boolean;

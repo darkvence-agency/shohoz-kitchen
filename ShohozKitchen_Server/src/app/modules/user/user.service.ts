@@ -8,9 +8,16 @@ import QueryBuilder from '../../utils/QueryBuilder';
 const UserService = {
     // Get all users (admin)
     async getAllUsers(query: Record<string, unknown>) {
+        // role=staff → everyone who works in the admin panel (super admin, admin, editor).
+        const q = { ...query };
+        const base: Record<string, unknown> = {};
+        if (q.role === 'staff') {
+            delete q.role;
+            base.role = { $in: ['superadmin', 'admin', 'editor'] };
+        }
         const userQuery = new QueryBuilder(
-            User.find().select('-password'),
-            query
+            User.find(base).select('-password'),
+            q
         )
             .search(['firstName', 'lastName', 'email', 'phone'])
             .filter()
@@ -55,7 +62,7 @@ const UserService = {
                 User.countDocuments(),
                 User.countDocuments({ status: 'active' }),
                 User.countDocuments({ status: 'blocked' }),
-                User.countDocuments({ role: 'admin' }),
+                User.countDocuments({ role: { $in: ['superadmin', 'admin', 'editor'] } }),   // all staff
                 User.countDocuments({ role: 'user' }),
                 User.countDocuments({ role: 'user', status: 'active' }),
                 User.countDocuments({ role: 'user', status: 'blocked' }),

@@ -66,6 +66,19 @@ export const orderApi = baseApi.injectEndpoints({
             invalidatesTags: ['Orders', 'Products', 'Users'],
         }),
 
+        // Admin: shipping-label / invoice data for up to 100 orders, in the order given —
+        // Backend route: POST /api/orders/admin/print { ids }. A read, so a query (POST only
+        // because the id list can be long); dropped as soon as the print window closes.
+        getOrdersPrintData: builder.query({
+            query: (ids: string[]) => ({
+                url: '/orders/admin/print',
+                method: 'POST',
+                body: { ids },
+            }),
+            providesTags: ['Orders'],
+            keepUnusedDataFor: 0,
+        }),
+
         // ===== User endpoints =====
         // User: create order — Backend route: POST /api/orders/
         createOrder: builder.mutation({
@@ -143,6 +156,7 @@ export const {
     useUpdatePaymentStatusMutation,
     useAddAdminNoteMutation,
     useCreateAdminOrderMutation,
+    useGetOrdersPrintDataQuery,
     // User hooks
     useCreateOrderMutation,
     useGuestCheckoutMutation,

@@ -31,6 +31,19 @@ import { ActivityLogRoutes } from './app/modules/activityLog/activityLog.routes'
 import { NewsletterRoutes } from './app/modules/newsletter/newsletter.routes';
 import { CourierRoutes } from './app/modules/courier/courier.routes';
 import { AssistantRoutes } from './app/modules/assistant/assistant.routes';
+import { UnitRoutes } from './app/modules/unit/unit.routes';
+import { DashboardRoutes } from './app/modules/dashboard/dashboard.routes';
+import { AttributeRoutes } from './app/modules/attribute/attribute.routes';
+import { InventoryRoutes } from './app/modules/inventory/inventory.routes';
+import { CourierPayoutRoutes } from './app/modules/courierPayout/courierPayout.routes';
+import { FraudRoutes } from './app/modules/fraud/fraud.routes';
+import { SupplierRoutes } from './app/modules/supplier/supplier.routes';
+import { PurchaseRoutes } from './app/modules/purchase/purchase.routes';
+import { WarehouseRoutes } from './app/modules/warehouse/warehouse.routes';
+import { TransferRoutes } from './app/modules/transfer/transfer.routes';
+import { ExpenseRoutes } from './app/modules/expense/expense.routes';
+import { InvestorRoutes } from './app/modules/investor/investor.routes';
+import { AccountsRoutes } from './app/modules/accounts/accounts.routes';
 
 const app: Application = express();
 
@@ -104,6 +117,19 @@ app.use('/api/activity-logs', ActivityLogRoutes);
 app.use('/api/newsletter', NewsletterRoutes);
 app.use('/api/courier', CourierRoutes);
 app.use('/api/assistant', AssistantRoutes);
+app.use('/api/units', UnitRoutes);
+app.use('/api/dashboard', DashboardRoutes);
+app.use('/api/attributes', AttributeRoutes);
+app.use('/api/inventory', InventoryRoutes);
+app.use('/api/courier-payouts', CourierPayoutRoutes);
+app.use('/api/fraud', FraudRoutes);
+app.use('/api/suppliers', SupplierRoutes);
+app.use('/api/purchases', PurchaseRoutes);
+app.use('/api/warehouses', WarehouseRoutes);
+app.use('/api/transfers', TransferRoutes);
+app.use('/api/expenses', ExpenseRoutes);
+app.use('/api/investors', InvestorRoutes);
+app.use('/api/accounts', AccountsRoutes);
 
 // ── Error Handlers ────────────────────────────────────────────────
 app.use(notFoundHandler);

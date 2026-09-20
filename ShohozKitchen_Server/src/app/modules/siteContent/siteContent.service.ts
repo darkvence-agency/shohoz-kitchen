@@ -15,14 +15,17 @@ const SiteContentService = {
                     { text: '🚚 Free Shipping on orders over Tk.5000', emoji: '🚚', active: true, order: 4 },
                     { text: '💳 Extra 10% Cashback with bKash Payment', emoji: '💳', active: true, order: 5 },
                 ],
+                // Contact details start empty: the storefront shows no number, email or
+                // address (and links nowhere) until an admin fills them in Site Content.
                 contact: {
-                    phone: '01611829111',
-                    phones: ['01611829111', '01955668133', '01624033566'],
-                    whatsapp: '01611829111',
-                    email: 'badshaelectronicsltd@gmail.com',
-                    emails: ['badshaelectronicsltd@gmail.com'],
-                    address: 'Dhaka, Bangladesh',
-                    website: 'shohozkitchen.com',
+                    phone: '',
+                    phones: [],
+                    whatsapp: '',
+                    messenger: '',
+                    email: '',
+                    emails: [],
+                    address: '',
+                    website: '',
                     hours: [
                         { day: 'Sunday – Thursday', time: '9:00 AM – 6:00 PM' },
                         { day: 'Friday', time: '2:00 PM – 6:00 PM' },
@@ -41,9 +44,10 @@ const SiteContentService = {
                     subjects: ['Order Issue', 'Product Inquiry', 'Return / Refund', 'Delivery Problem', 'Payment Issue', 'Other'],
                 },
                 floating: {
-                    phone: '+880 1611829111',
-                    whatsapp: '8801611829111',
-                    messenger: 'YOUR_PAGE_USERNAME',
+                    // Empty = use the Contact Info number / page.
+                    phone: '',
+                    whatsapp: '',
+                    messenger: '',
                     showPhone: true,
                     showWhatsapp: true,
                     showMessenger: true,
@@ -103,33 +107,8 @@ const SiteContentService = {
             );
         }
 
-        // Auto-migrate: ensure default Shohoz Kitchen contact phones/emails/website are populated
-        const c: any = content.get('contact') || {};
-        const needsContactMigrate =
-            !Array.isArray(c.phones) || c.phones.length === 0 ||
-            !Array.isArray(c.emails) || c.emails.length === 0 ||
-            !c.website;
-        if (needsContactMigrate) {
-            const mergedPhones = Array.from(new Set([
-                ...(Array.isArray(c.phones) ? c.phones : []),
-                '01611829111', '01955668133', '01624033566',
-            ].filter(Boolean)));
-            const mergedEmails = Array.from(new Set([
-                ...(Array.isArray(c.emails) ? c.emails : []),
-                c.email || 'badshaelectronicsltd@gmail.com',
-            ].filter(Boolean)));
-            content = await SiteContent.findOneAndUpdate(
-                { _key: 'main' },
-                {
-                    $set: {
-                        'contact.phones': mergedPhones,
-                        'contact.emails': mergedEmails,
-                        'contact.website': c.website || 'shohozkitchen.com',
-                    },
-                },
-                { new: true }
-            );
-        }
+        // (Contact phones/emails/website are no longer back-filled with sample numbers:
+        //  empty means "not added yet" and the storefront shows nothing for them.)
 
         // Auto-migrate: ensure payment object exists
         if (!content.get('payment')) {

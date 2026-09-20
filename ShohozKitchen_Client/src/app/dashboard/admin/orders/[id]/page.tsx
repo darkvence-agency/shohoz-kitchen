@@ -17,7 +17,9 @@ import {
     FiSave,
     FiCalendar,
     FiMail,
-    FiPhone
+    FiPhone,
+    FiTag,
+    FiFileText
 } from 'react-icons/fi';
 import {
     useGetAdminOrderByIdQuery,
@@ -37,6 +39,10 @@ import {
     CARRIERS
 } from '@/lib/orderStatus';
 import { downloadInvoicePdf } from '@/lib/downloadInvoice';
+import FraudOrderBanner from '../../fraud-check/FraudOrderBanner';
+import PrintOrdersModal, { type PrintKind } from '@/components/admin/print/PrintOrdersModal';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
 
 // Shared status badge built from the canonical 11-state config
 const StatusBadge = ({ status }: { status: string }) => {
@@ -62,6 +68,8 @@ export default function OrderDetailsPage() {
     const [bookCourier] = useBookCourierPackageMutation();
     const [refreshCourier] = useRefreshCourierStatusMutation();
     const [busyPkg, setBusyPkg] = useState<string | null>(null);
+    // Editors confirm orders, add notes and print; payment, tracking and courier booking are for admins.
+    const isEditor = useSelector((s: RootState) => s.auth.user?.role) === 'editor';
 
     const handleBookCourier = async (packageId: string) => {
         if (!order?._id) return;
@@ -94,6 +102,7 @@ export default function OrderDetailsPage() {
     const [trackingNumber, setTrackingNumber] = useState('');
     const [carrier, setCarrier] = useState('');
     const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
+    const [printKind, setPrintKind] = useState<PrintKind | null>(null);
 
     const handleDownloadInvoice = async () => {
         if (!order?._id) return;
@@ -193,8 +202,25 @@ export default function OrderDetailsPage() {
                         <FiPrinter size={16} />
                         {isDownloadingInvoice ? 'Preparing...' : 'Invoice'}
                     </button>
+                    <button
+                        onClick={() => setPrintKind('labels')}
+                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-md text-sm font-medium hover:bg-gray-50 transition-all text-gray-600 shadow-sm"
+                    >
+                        <FiTag size={16} />
+                        Print label
+                    </button>
+                    <button
+                        onClick={() => setPrintKind('invoices')}
+                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-md text-sm font-medium hover:bg-gray-50 transition-all text-gray-600 shadow-sm"
+                    >
+                        <FiFileText size={16} />
+                        Print invoice
+                    </button>
                 </div>
             </div>
+
+            {/* Fraud check: shows only when this order was flagged */}
+            <FraudOrderBanner orderId={order._id} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Column - Main Details */}
@@ -436,8 +462,8 @@ export default function OrderDetailsPage() {
                                 </div>
                             )}
 
-                            {/* Change Payment Status */}
-                            <div className="flex justify-between items-center text-sm pt-1">
+                            {/* Change Payment Status (not for editors) */}
+                            {!isEditor && <div className="flex justify-between items-center text-sm pt-1">
                                 <span className="text-gray-500">Change Status:</span>
                                 <div className="flex items-center gap-2">
                                     <select
@@ -456,7 +482,7 @@ export default function OrderDetailsPage() {
                                         </button>
                                     )}
                                 </div>
-                            </div>
+                            </div>}
                         </div>
                     </div>
 
@@ -510,8 +536,8 @@ export default function OrderDetailsPage() {
                         </div>
                     </div>
 
-                    {/* Tracking */}
-                    <div className="bg-white rounded-md border border-gray-200 shadow-sm p-6">
+                    {/* Tracking (not for editors) */}
+                    {!isEditor && <div className="bg-white rounded-md border border-gray-200 shadow-sm p-6">
                         <div className="flex items-center gap-2 mb-4 text-gray-800">
                             <FiTruck className="text-[var(--color-primary)]" size={20} />
                             <h2 className="font-bold">Tracking</h2>
@@ -549,10 +575,10 @@ export default function OrderDetailsPage() {
                                 {isUpdatingTracking ? 'Saving...' : 'Save Tracking'}
                             </button>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Courier — Steadfast (per shipment) */}
-                    {Array.isArray(order.packages) && order.packages.length > 0 && (
+                    {!isEditor && Array.isArray(order.packages) && order.packages.length > 0 && (
                         <div className="bg-white rounded-md border border-gray-200 shadow-sm p-6">
                             <div className="flex items-center gap-2 mb-1 text-gray-800">
                                 <FiTruck className="text-[var(--color-primary)]" size={20} />
@@ -591,6 +617,11 @@ export default function OrderDetailsPage() {
                     )}
                 </div>
             </div>
+
+            <PrintOrdersModal
+                job={printKind ? { kind: printKind, ids: [order._id] } : null}
+                onClose={() => setPrintKind(null)}
+            />
         </div>
     );
 }

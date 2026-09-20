@@ -5,16 +5,17 @@ import { ShippingZone, ShippingRate } from './shipping.model';
 import { Order } from '../order/order.model';
 import QueryBuilder from '../../utils/QueryBuilder';
 import AppError from '../../utils/AppError';
-import { computeShippingCost, getSettings, updateSettings } from './shipping.service';
+import { computeShippingCost, getSettings, updateSettings, isDeliveryArea } from './shipping.service';
 
 const ShippingController = {
     // ═══════════════════ PUBLIC QUOTE ═══════════════════
-    // GET /shipping/quote?city=...&subtotal=...&zoneId=...  (no auth)
+    // GET /shipping/quote?city=...&subtotal=...&zoneId=...&area=inside_dhaka|outside_dhaka  (no auth)
     getQuote: catchAsync(async (req: Request, res: Response) => {
-        const city = (req.query.city as string) || '';
+        const city = typeof req.query.city === 'string' ? req.query.city : '';
         const subtotal = Number(req.query.subtotal) || 0;
-        const zoneId = (req.query.zoneId as string) || undefined;
-        const quote = await computeShippingCost({ city, subtotal, zoneId });
+        const zoneId = typeof req.query.zoneId === 'string' && req.query.zoneId ? req.query.zoneId : undefined;
+        const area = isDeliveryArea(req.query.area) ? req.query.area : undefined;
+        const quote = await computeShippingCost({ city, subtotal, zoneId, area });
         sendResponse(res, { statusCode: 200, success: true, message: 'Shipping quote', data: quote });
     }),
 

@@ -10,6 +10,7 @@ import {
     FiSave, FiPlus, FiTrash2, FiCheckCircle, FiArrowUp, FiArrowDown, FiCreditCard,
 } from 'react-icons/fi';
 import { SingleImageUploader } from '@/components/ui/ImageUploader';
+import { telHref, whatsappHref, messengerHref, messengerId } from '@/utils/contactLinks';
 
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false, loading: () => <div style={{ height: '350px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', animation: 'pulse 1.5s ease-in-out infinite' }} /> });
 import 'react-quill-new/dist/quill.snow.css';
@@ -42,7 +43,11 @@ export default function SiteContentPage() {
 
     useEffect(() => {
         if (res?.data) {
-            setFormData(JSON.parse(JSON.stringify(res.data)));
+            const copy = JSON.parse(JSON.stringify(res.data));
+            // Floating buttons that merely repeat Contact Info are switched to follow it.
+            const relinked = linkFloatingToContact(copy);
+            if (relinked.length) copy.__floatingRelinked = relinked;
+            setFormData(copy);
         }
     }, [res]);
 
@@ -55,6 +60,13 @@ export default function SiteContentPage() {
             } else {
                 payload[activeTab] = formData[activeTab];
             }
+            if (activeTab === 'contact') {
+                const tidy = (list: unknown) => (Array.isArray(list) ? list : []).map((v) => String(v ?? '').trim()).filter(Boolean);
+                payload.contact = { ...formData.contact, phones: tidy(formData.contact?.phones), emails: tidy(formData.contact?.emails) };
+            }
+            // Saving Contact Info also stores the floating buttons' link to it, so a later
+            // change of number reaches the buttons too.
+            if (activeTab === 'contact' && (formData.__floatingRelinked || formData.__saveFloatingWithContact)) payload.floating = formData.floating;
             await updateContent(payload).unwrap();
             setSaveSuccess(true);
             setTimeout(() => setSaveSuccess(false), 2000);
@@ -128,6 +140,35 @@ function ContactTab({ data, setData }: { data: any; setData: any }) {
         setData((p: any) => ({ ...p, contact: { ...p.contact, [field]: value } }));
     };
 
+    // Phones / emails are lists (the storefront shows them all); the first one is also the
+    // main `phone` / `email` used for tel: / mailto: links.
+    const listOf = (listKey: string, singleKey: string): string[] =>
+        Array.isArray(c[listKey]) && c[listKey].length > 0 ? c[listKey] : c[singleKey] ? [c[singleKey]] : [];
+    const setList = (listKey: string, singleKey: string, list: string[]) =>
+        setData((p: any) => ({
+            ...p,
+            contact: { ...p.contact, [listKey]: list, [singleKey]: list.map((v) => v.trim()).find(Boolean) || '' },
+        }));
+    const phones = listOf('phones', 'phone');
+    const emails = listOf('emails', 'email');
+
+    // Empties every contact detail (and the floating buttons' own copies) — the storefront
+    // then shows no number, email or address until new ones are added. Saved on "Save Changes".
+    const clearAll = () => {
+        if (!window.confirm('Clear all phone numbers, WhatsApp, Messenger, emails, addresses and the website? Nothing will be clickable on the website until you add new ones.')) return;
+        setData((p: any) => ({
+            ...p,
+            contact: {
+                ...p.contact,
+                phone: '', phones: [], whatsapp: '', messenger: '', email: '', emails: [],
+                address: '', corporateOffice: '', warehouse: '', website: '',
+            },
+            floating: { ...p.floating, phone: '', whatsapp: '', messenger: '' },
+            __saveFloatingWithContact: true,
+        }));
+        toast.success('Cleared — click Save Changes to apply');
+    };
+
     const addHour = () => {
         setData((p: any) => ({ ...p, contact: { ...p.contact, hours: [...(p.contact.hours || []), { day: '', time: '' }] } }));
     };
@@ -174,11 +215,58 @@ function ContactTab({ data, setData }: { data: any; setData: any }) {
 
             {/* Basic Info */}
             <div style={card}>
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Contact Information</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', margin: '0 0 14px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>Contact Information</h3>
+                    <button type="button" onClick={clearAll} style={btnDanger}><FiTrash2 size={13} /> Clear all contact details</button>
+                </div>
+                <p style={{ fontSize: '11px', color: '#888', margin: '0 0 12px' }}>
+                    Empty fields are hidden on the website and nothing is clickable for them.
+                </p>
+
+                {/* Phone numbers (first = main) */}
+                <div style={{ marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                        <label style={{ ...label, marginBottom: 0 }}>Phone Numbers <span style={{ fontWeight: 400, color: '#999' }}>(the first one is the main number)</span></label>
+                        <button type="button" onClick={() => setList('phones', 'phone', [...phones, ''])} style={btnSmall}><FiPlus size={13} /> Add phone</button>
+                    </div>
+                    {phones.map((ph, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+                            <input value={ph} onChange={e => setList('phones', 'phone', phones.map((v, i) => (i === idx ? e.target.value : v)))} placeholder="01XXXXXXXXX" style={{ ...input, flex: 1 }} />
+                            <button type="button" onClick={() => setList('phones', 'phone', phones.filter((_, i) => i !== idx))} style={btnDanger}><FiTrash2 size={13} /></button>
+                        </div>
+                    ))}
+                    {phones.length === 0 && <p style={{ fontSize: '12px', color: '#bbb', margin: '4px 0 0' }}>No phone number added.</p>}
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div><label style={label}>Phone Number</label><input value={c.phone || ''} onChange={e => updateField('phone', e.target.value)} style={input} /></div>
-                    <div><label style={label}>WhatsApp Number</label><input value={c.whatsapp || ''} onChange={e => updateField('whatsapp', e.target.value)} style={input} /></div>
-                    <div><label style={label}>Email</label><input value={c.email || ''} onChange={e => updateField('email', e.target.value)} style={input} /></div>
+                    <div style={{ gridColumn: 'span 2' }}><label style={label}>WhatsApp Number</label><input value={c.whatsapp || ''} onChange={e => updateField('whatsapp', e.target.value)} placeholder="01XXXXXXXXX" style={input} /></div>
+                    <div style={{ gridColumn: 'span 2' }}>
+                        <label style={label}>Messenger (Facebook page link or username)</label>
+                        <input value={c.messenger || ''} onChange={e => updateField('messenger', e.target.value)} placeholder="facebook.com/shohozkitchen  or  shohozkitchen" style={input} />
+                        <p style={{ fontSize: '11px', color: messengerId(c.messenger) || !c.messenger ? '#888' : '#dc2626', margin: '4px 0 0' }}>
+                            {!c.messenger
+                                ? 'Leave empty if you do not use Messenger.'
+                                : messengerId(c.messenger)
+                                    ? <>Opens <a href={messengerHref(c.messenger)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>{messengerHref(c.messenger)}</a></>
+                                    : 'This does not look like a Facebook page link or username.'}
+                        </p>
+                    </div>
+                    <p style={{ gridColumn: 'span 2', fontSize: '11px', color: '#888', margin: 0 }}>
+                        The Phone, WhatsApp and Messenger above also power the floating Call / WhatsApp / Messenger buttons on every page (see the Floating Widget tab).
+                    </p>
+                    <div style={{ gridColumn: 'span 2' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                            <label style={{ ...label, marginBottom: 0 }}>Emails <span style={{ fontWeight: 400, color: '#999' }}>(the first one is the main email)</span></label>
+                            <button type="button" onClick={() => setList('emails', 'email', [...emails, ''])} style={btnSmall}><FiPlus size={13} /> Add email</button>
+                        </div>
+                        {emails.map((em, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '6px', alignItems: 'center' }}>
+                                <input value={em} onChange={e => setList('emails', 'email', emails.map((v, i) => (i === idx ? e.target.value : v)))} placeholder="name@example.com" style={{ ...input, flex: 1 }} />
+                                <button type="button" onClick={() => setList('emails', 'email', emails.filter((_, i) => i !== idx))} style={btnDanger}><FiTrash2 size={13} /></button>
+                            </div>
+                        ))}
+                        {emails.length === 0 && <p style={{ fontSize: '12px', color: '#bbb', margin: '4px 0 0' }}>No email added.</p>}
+                    </div>
                     <div><label style={label}>Primary Address</label><input value={c.address || ''} onChange={e => updateField('address', e.target.value)} style={input} /></div>
                     <div><label style={label}>Corporate Office</label><input value={c.corporateOffice || ''} onChange={e => updateField('corporateOffice', e.target.value)} placeholder="Head office address" style={input} /></div>
                     <div><label style={label}>Warehouse Address</label><input value={c.warehouse || ''} onChange={e => updateField('warehouse', e.target.value)} placeholder="Warehouse address" style={input} /></div>
@@ -253,46 +341,104 @@ function ContactTab({ data, setData }: { data: any; setData: any }) {
 }
 
 /* ─── FLOATING TAB ─── */
+// The floating Call / WhatsApp / Messenger buttons. Each one follows Contact Info
+// (empty value here) unless the admin gives it its own number or page.
+const FLOATING_CHANNELS = [
+    { key: 'phone', showKey: 'showPhone', title: 'Call button', contactLabel: 'Phone Number', href: telHref, placeholder: '01XXXXXXXXX', color: '#2563eb', invalid: 'Enter a phone number.' },
+    { key: 'whatsapp', showKey: 'showWhatsapp', title: 'WhatsApp button', contactLabel: 'WhatsApp Number', href: whatsappHref, placeholder: '01XXXXXXXXX', color: '#25D366', invalid: 'Enter a WhatsApp number.' },
+    { key: 'messenger', showKey: 'showMessenger', title: 'Messenger button', contactLabel: 'Messenger', href: messengerHref, placeholder: 'facebook.com/shohozkitchen  or  shohozkitchen', color: '#0084FF', invalid: 'Enter a Facebook page link or username.' },
+] as const;
+
+/**
+ * Floating values that only repeat Contact Info (or the seed's "YOUR_PAGE_USERNAME")
+ * become '' so those buttons follow Contact Info. Returns the keys that changed.
+ */
+function linkFloatingToContact(site: any): string[] {
+    const f = site?.floating;
+    if (!f) return [];
+    const c = site.contact || {};
+    const changed: string[] = [];
+    for (const ch of FLOATING_CHANNELS) {
+        const own = String(f[ch.key] || '').trim();
+        if (!own) continue;
+        const sameAsContact = !!c[ch.key] && ch.href(own) !== '' && ch.href(own) === ch.href(c[ch.key]);
+        const placeholder = ch.key === 'messenger' && !messengerId(own);
+        if (sameAsContact || placeholder) { f[ch.key] = ''; changed.push(ch.title); }
+    }
+    return changed;
+}
+
 function FloatingTab({ data, setData }: { data: any; setData: any }) {
     const f = data.floating || {};
+    const c = data.contact || {};
     const update = (field: string, value: any) => setData((p: any) => ({ ...p, floating: { ...p.floating, [field]: value } }));
+    // Remembered per channel while the admin is typing an own number (it starts empty).
+    const [custom, setCustom] = useState<Record<string, boolean>>({});
+    const relinked: string[] = data.__floatingRelinked || [];
 
     return (
-        <div style={card}>
-            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Floating Contact Widget</h3>
-            <p style={{ fontSize: '12px', color: '#888', margin: '0 0 16px' }}>Manage the floating WhatsApp/Messenger/Phone button that appears on every page.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                    <label style={label}>Phone Number</label>
-                    <input value={f.phone || ''} onChange={e => update('phone', e.target.value)} style={input} />
-                </div>
-                <div>
-                    <label style={label}>Show Phone</label>
-                    <select value={f.showPhone ? 'true' : 'false'} onChange={e => update('showPhone', e.target.value === 'true')} style={input}>
-                        <option value="true">Yes</option><option value="false">No</option>
-                    </select>
-                </div>
-                <div>
-                    <label style={label}>WhatsApp Number (with country code)</label>
-                    <input value={f.whatsapp || ''} onChange={e => update('whatsapp', e.target.value)} placeholder="8801XXXXXXXXX" style={input} />
-                </div>
-                <div>
-                    <label style={label}>Show WhatsApp</label>
-                    <select value={f.showWhatsapp ? 'true' : 'false'} onChange={e => update('showWhatsapp', e.target.value === 'true')} style={input}>
-                        <option value="true">Yes</option><option value="false">No</option>
-                    </select>
-                </div>
-                <div>
-                    <label style={label}>Messenger Page Username</label>
-                    <input value={f.messenger || ''} onChange={e => update('messenger', e.target.value)} placeholder="YOUR_PAGE_USERNAME" style={input} />
-                </div>
-                <div>
-                    <label style={label}>Show Messenger</label>
-                    <select value={f.showMessenger ? 'true' : 'false'} onChange={e => update('showMessenger', e.target.value === 'true')} style={input}>
-                        <option value="true">Yes</option><option value="false">No</option>
-                    </select>
-                </div>
+        <div>
+            <div style={card}>
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Floating Contact Buttons</h3>
+                <p style={{ fontSize: '12px', color: '#888', margin: 0 }}>
+                    The round Call / WhatsApp / Messenger buttons at the bottom-right of every page. By default each one uses the number or page from the <strong>Contact Page</strong> tab, so you only change it in one place.
+                </p>
+                {relinked.length > 0 && (
+                    <p style={{ fontSize: '12px', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '7px', padding: '8px 10px', margin: '12px 0 0' }}>
+                        {relinked.join(', ')} had its own copy of the contact details (or the sample “YOUR_PAGE_USERNAME”). It is now set to follow Contact Info — click <strong>Save Changes</strong> to keep this.
+                    </p>
+                )}
             </div>
+
+            {FLOATING_CHANNELS.map((ch) => {
+                const own = String(f[ch.key] || '');
+                const linked = !own && !custom[ch.key];
+                const value = linked ? String(c[ch.key] || '') : own;
+                const href = ch.href(value);
+                const shown = f[ch.showKey] !== false;
+                return (
+                    <div key={ch.key} style={{ ...card, borderLeft: `4px solid ${ch.color}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>{ch.title}</h3>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', fontWeight: 600, color: '#555', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={shown} onChange={(e) => update(ch.showKey, e.target.checked)} />
+                                Show on the website
+                            </label>
+                        </div>
+
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#333', cursor: 'pointer', marginBottom: '8px' }}>
+                            <input
+                                type="checkbox"
+                                checked={linked}
+                                onChange={(e) => {
+                                    if (e.target.checked) { update(ch.key, ''); setCustom((m) => ({ ...m, [ch.key]: false })); }
+                                    else setCustom((m) => ({ ...m, [ch.key]: true }));
+                                }}
+                            />
+                            Same as Contact Info ({ch.contactLabel})
+                        </label>
+
+                        {linked ? (
+                            <div style={{ ...input, background: '#f9fafb', color: c[ch.key] ? '#333' : '#aaa' }}>
+                                {c[ch.key] || `Not set in the Contact Page tab yet`}
+                            </div>
+                        ) : (
+                            <input value={own} onChange={(e) => update(ch.key, e.target.value)} placeholder={ch.placeholder} style={input} autoFocus={!!custom[ch.key] && !own} />
+                        )}
+
+                        <p style={{ fontSize: '11px', margin: '6px 0 0', color: href ? '#888' : '#dc2626' }}>
+                            {href ? (
+                                <>
+                                    {shown ? 'Opens ' : 'Hidden. Would open '}
+                                    <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)' }}>{href}</a>
+                                </>
+                            ) : (
+                                <>{ch.invalid} Until then this button stays hidden.</>
+                            )}
+                        </p>
+                    </div>
+                );
+            })}
         </div>
     );
 }
