@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import {
     FiShoppingCart, FiChevronDown, FiMenu, FiX,
     FiUser, FiHeart, FiPhone, FiMail, FiLogOut,
-    FiGrid, FiBox, FiSmartphone, FiHeadphones, FiMapPin, FiGlobe,
+    FiGrid, FiBox, FiHeadphones, FiMapPin, FiGlobe,
 } from 'react-icons/fi';
 import { useAppSelector, useAppDispatch } from '@/redux';
 import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
@@ -234,19 +234,8 @@ const Header: React.FC = () => {
                     <div className="container mx-auto px-4">
                         <div className="flex items-center justify-between h-9 text-[12px]" style={{ color: 'var(--color-text-primary)' }}>
 
-                            {/* Left: app + support */}
+                            {/* Left: support */}
                             <div className="flex items-center gap-5">
-                                {contactPhoneHref ? (
-                                    <a href={contactPhoneHref} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
-                                        <FiSmartphone size={13} strokeWidth={2} />
-                                        <span>Shohoz Kitchen App</span>
-                                    </a>
-                                ) : (
-                                    <span className="flex items-center gap-1.5 select-none">
-                                        <FiSmartphone size={13} strokeWidth={2} />
-                                        <span>Shohoz Kitchen App</span>
-                                    </span>
-                                )}
                                 <Link href="/contact" className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
                                     <FiHeadphones size={13} strokeWidth={2} />
                                     <span>Support</span>
