@@ -38,6 +38,7 @@ import ExpenseService, { DEFAULT_EXPENSE_CATEGORIES } from './app/modules/expens
 import { voucherNo } from './app/modules/expense/expense.utils';
 import { Investor, InvestorTransaction } from './app/modules/investor/investor.model';
 import { StockMovement } from './app/modules/inventory/stockMovement.model';
+import { ActivityLog } from './app/modules/activityLog/activityLog.model';
 
 // This machine's default resolver refuses queries; Atlas needs working DNS.
 dns.setServers(['8.8.8.8', '1.1.1.1']);
@@ -94,6 +95,22 @@ const CUSTOMERS = [
     ['Mitu', 'Begum'], ['Arif', 'Hossain'], ['Sumaiya', 'Islam'], ['Imran', 'Kabir'], ['Jannatul', 'Ferdous'],
     ['Shakil', 'Mahmud'], ['Tahmina', 'Sultana'], ['Nayeem', 'Chowdhury'], ['Rumana', 'Parvin'],
 ];
+/**
+ * Staff logins the owner asked for. These are real accounts, not demo rows: they
+ * stay behind after `npm run demo:clean` so the shop keeps its staff, and a re-run
+ * updates them in place instead of failing on the duplicate email.
+ *
+ * The password is the email address, as specified. Fine while nobody but the owner
+ * has the addresses; change them before the shop takes real orders.
+ */
+const STAFF: { email: string; firstName: string; lastName: string; role: 'superadmin' | 'admin' | 'editor' }[] = [
+    { email: 'superadmin@gmail.com', firstName: 'Super', lastName: 'Admin', role: 'superadmin' },
+    { email: 'admin@gmail.com', firstName: 'Shop', lastName: 'Admin', role: 'admin' },
+    { email: 'editorone@gmail.com', firstName: 'Editor', lastName: 'One', role: 'editor' },
+    { email: 'editortwo@gmail.com', firstName: 'Editor', lastName: 'Two', role: 'editor' },
+    { email: 'editorthree@gmail.com', firstName: 'Editor', lastName: 'Three', role: 'editor' },
+];
+
 const AREAS: { city: string; areas: string[]; dhaka: boolean }[] = [
     { city: 'Dhaka', areas: ['Mirpur 10', 'Dhanmondi 27', 'Uttara Sector 7', 'Mohammadpur', 'Badda', 'Bashundhara R/A', 'Banani', 'Jatrabari'], dhaka: true },
     { city: 'Chattogram', areas: ['Agrabad', 'Nasirabad', 'Halishahar'], dhaka: false },
@@ -117,9 +134,31 @@ async function seedDemo() {
         .lean();
     if (products.length === 0) throw new Error('No active products found — add products first (npm run seed:demo adds 5).');
 
-    const admin: any = await User.findOne({ role: { $in: ['admin', 'superadmin'] } }).select('_id').lean();
-    const adminId = admin?._id || null;
+    /* ── 0. Staff logins (kept after demo:clean — see STAFF) ── */
+    const staff: { _id: Types.ObjectId; name: string; role: string; email: string }[] = [];
+    for (const s of STAFF) {
+        const name = `${s.firstName} ${s.lastName}`;
+        if (DRY) { staff.push({ _id: new Types.ObjectId(), name, role: s.role, email: s.email }); continue; }
+        const hash = await bcrypt.hash(s.email, config.bcrypt_salt_rounds);
+        // Upsert: an account the owner already made keeps its id, and gets the
+        // role and password stated above so every login in the list works.
+        const res = await User.collection.findOneAndUpdate(
+            { email: s.email },
+            {
+                $set: { password: hash, firstName: s.firstName, lastName: s.lastName, role: s.role, status: 'active', isEmailVerified: true, isDeleted: false, updatedAt: new Date() },
+                $setOnInsert: { email: s.email, phone: '', permissions: [], shippingAddresses: [], createdAt: new Date() },
+            },
+            { upsert: true, returnDocument: 'after' },
+        );
+        const doc: any = (res as any)?.value ?? res;
+        staff.push({ _id: doc._id, name, role: s.role, email: s.email });
+    }
+    /** Editors run the order desk; admins pitch in. Weighted so editors do most of it. */
+    const DESK = [...staff.filter((s) => s.role === 'editor'), ...staff.filter((s) => s.role === 'editor'), ...staff.filter((s) => s.role !== 'editor')];
+
+    const adminId = staff.find((s) => s.role === 'admin')?._id || staff[0]?._id || null;
     const ids: Record<string, Types.ObjectId[]> = {};
+    const activity: Record<string, any>[] = [];
 
     // The manifest goes in before any data, so a run that stops half-way can still be cleaned.
     await manifest().insertOne({ _id: MANIFEST_ID, createdAt: new Date(), status: 'seeding', ids: {}, productCosts: [], purchaseRefs: [] });
@@ -175,10 +214,18 @@ async function seedDemo() {
         const placed = new Date(Math.min(at(placedDay, between(9, 22), between(0, 59)).getTime(), Date.now() - between(20, 240) * 60_000));
 
         // Walk the status flow, a few hours / a day apart.
-        const timeline: { status: string; note: string; createdAt: Date }[] = [];
+        // Every step after "placed" is somebody at the order desk, so the Staff
+        // activity report has the same shape it gets from real confirmations.
+        // One person follows an order through, the way it works in practice.
+        const owner = pick(DESK);
+        const timeline: { status: string; note: string; actor: Types.ObjectId | null; actorName: string; createdAt: Date }[] = [];
         let t = placed.getTime();
-        const step = (s: string, note: string, hours: number) => { t += hours * 3_600_000; timeline.push({ status: s, note, createdAt: new Date(Math.min(t, Date.now() - 60_000)) }); };
-        timeline.push({ status: 'pending', note: 'Order placed', createdAt: placed });
+        const step = (s: string, note: string, hours: number) => {
+            t += hours * 3_600_000;
+            timeline.push({ status: s, note, actor: owner._id, actorName: owner.name, createdAt: new Date(Math.min(t, Date.now() - 60_000)) });
+        };
+        // The customer places the order; nobody on staff is behind this one.
+        timeline.push({ status: 'pending', note: 'Order placed', actor: null, actorName: '', createdAt: placed });
         const stopAt = ['cancelled', 'returned', 'refunded'].includes(status) ? (status === 'cancelled' ? 'confirmed' : 'delivered') : status;
         for (const s of FLOW.slice(1, FLOW.indexOf(stopAt) + 1)) step(s, s === 'confirmed' ? 'Confirmed by phone' : '', s === 'delivered' ? between(20, 50) : between(2, 14));
         if (status === 'cancelled') step('cancelled', pick(['Customer cancelled on the phone', 'Could not reach the customer', 'Customer ordered twice']), between(1, 6));
@@ -201,6 +248,25 @@ async function seedDemo() {
             cancelReason: status === 'cancelled' ? timeline[timeline.length - 1].note : '',
             timeline,
         }, placed, last);
+
+        // One ActivityLog row per staff-made change — that is what the Staff
+        // activity report reads, exactly as OrderService.updateOrderStatus writes it.
+        for (let i = 1; i < timeline.length; i++) {
+            const e = timeline[i];
+            if (!e.actor) continue;
+            activity.push(await prepare(ActivityLog, {
+                actor: e.actor,
+                actorName: e.actorName,
+                action: `order_status_${e.status}`,
+                target: `Order:${order.orderId}`,
+                meta: {
+                    orderId: String(order._id), orderNo: order.orderId,
+                    from: timeline[i - 1].status, to: e.status,
+                    role: owner.role, total: order.total,
+                },
+            }, e.createdAt));
+        }
+
         orders.push(order);
         return order;
     };
@@ -221,6 +287,7 @@ async function seedDemo() {
         await makeOrder({ customer: customers[1 + (n % (customers.length - 1))], dayOffset: offset, status });
     }
     ids.orders = await insert('orders', Order, orders);
+    ids.activityLogs = await insert('activityLogs', ActivityLog, activity);
 
     /* ── 4. Fraud check flag for the repeat returner's new order ── */
     ids.fraudFlags = await insert('fraudFlags', FraudFlag, [await prepare(FraudFlag, {
@@ -415,6 +482,7 @@ async function seedDemo() {
     const revenue = orders.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.total, 0);
     console.log(DRY ? '🧪 Dry run — every document built and validated, NOTHING written:' : '✅ Demo data added:');
     console.log(`   ${ids.users.length} customers, ${ids.orders.length} orders (৳${revenue.toLocaleString('en-IN')} delivered), ${ids.courierPayouts.length} courier payouts, 1 fraud-check flag`);
+    console.log(`   ${staff.length} staff logins (${staff.filter((s) => s.role === 'editor').length} editors), ${ids.activityLogs.length} order-desk actions for the Staff activity report`);
     console.log(`   ${ids.suppliers.length} suppliers, ${ids.purchases.length} purchases, ${ids.warehouses.length} warehouses, ${ids.transfers.length} transfers`);
     console.log(`   ${ids.expenses.length} expenses, ${ids.investors.length} investors, cost price set on ${productCosts.length} products`);
     console.log('   Remove it all again with:  npm run demo:clean');
@@ -446,6 +514,7 @@ async function cleanDemo() {
         orders: await del(Order, orderIds),
         fraudFlags: (await FraudFlag.collection.deleteMany({ order: { $in: orderIds } })).deletedCount,
         users: await del(User, ids.users),
+        activityLogs: await del(ActivityLog, ids.activityLogs),
         courierPayouts: await del(CourierPayout, ids.courierPayouts),
         purchases: await del(Purchase, ids.purchases),
         transfers: await del(Transfer, ids.transfers),
