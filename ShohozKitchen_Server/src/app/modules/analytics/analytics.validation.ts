@@ -69,6 +69,37 @@ export const salesReportOrdersValidation = z.object({
         }),
 });
 
+/** Staff order activity: same period rules, optionally narrowed to one member/status. */
+const ORDER_STATUSES = [
+    'pending', 'confirmed', 'processing', 'shipped', 'on_the_way',
+    'out_for_delivery', 'delivery_attempt', 'delivered', 'cancelled', 'returned', 'refunded',
+] as const;
+
+const periodRange = (q: { from?: string; to?: string }, ctx: z.RefinementCtx) => {
+    if (q.from && q.to && q.from > q.to) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['to'], message: '"to" must be on or after "from"' });
+    } else if (q.from && q.to && daySpan(q.from, q.to) > MAX_RANGE_DAYS) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['to'], message: `A report can cover at most ${MAX_RANGE_DAYS} days` });
+    }
+};
+
+export const staffActivityValidation = z.object({
+    query: z.object({ from: day.optional(), to: day.optional() }).superRefine(periodRange),
+});
+
+export const staffHistoryValidation = z.object({
+    query: z
+        .object({
+            from: day.optional(),
+            to: day.optional(),
+            actor: z.string().trim().regex(/^[a-f\d]{24}$/i, 'Not a valid staff id').optional(),
+            status: z.enum(ORDER_STATUSES).optional(),
+            page: intIn(1, 100000).optional(),
+            limit: intIn(1, 100).optional(),
+        })
+        .superRefine(periodRange),
+});
+
 export const lowStockValidation = z.object({
     query: z.object({ threshold: intIn(0, 100000).optional() }),
 });

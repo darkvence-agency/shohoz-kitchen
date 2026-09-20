@@ -69,4 +69,6 @@ export const PRESETS: Preset[] = [
             return { from: `${lastPrev.slice(0, 8)}01`, to: lastPrev };
         },
     },
+    // Fits inside MAX_RANGE_DAYS (366) even in a leap year.
+    { key: 'year', label: 'This year', range: () => { const t = dhakaToday(); return { from: `${t.slice(0, 4)}-01-01`, to: t }; } },
 ];

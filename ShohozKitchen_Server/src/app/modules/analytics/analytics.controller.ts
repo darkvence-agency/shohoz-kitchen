@@ -6,6 +6,7 @@ import { Product } from '../product/product.model';
 import { User } from '../user/user.model';
 import { Category } from '../category/category.model';
 import AnalyticsService from './analytics.service';
+import StaffAnalytics from './analytics.staff';
 import { REPORT_TZ, dhakaDayStart, dhakaToday, resolvePeriod } from './analytics.period';
 import { StatusBucket } from './analytics.validation';
 
@@ -201,6 +202,25 @@ const AnalyticsController = {
         const period = hasPeriod(req.query) ? resolvePeriod(req.query.from, req.query.to) : undefined;
         const data = await AnalyticsService.getReturnsSummary(period);
         sendResponse(res, { statusCode: 200, success: true, message: 'Returns summary fetched', data });
+    }),
+
+    // GET /analytics/staff-orders[?from&to] — who confirmed how many orders in the period
+    getStaffActivity: catchAsync(async (req: Request, res: Response) => {
+        const period = resolvePeriod(req.query.from, req.query.to);
+        const data = await StaffAnalytics.getStaffActivity(period);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Staff order activity fetched', data });
+    }),
+
+    // GET /analytics/staff-orders/history[?from&to&actor&status&page&limit] — the raw change log
+    getStaffHistory: catchAsync(async (req: Request, res: Response) => {
+        const period = resolvePeriod(req.query.from, req.query.to);
+        const { rows, meta } = await StaffAnalytics.getStaffHistory(period, {
+            actor: req.query.actor as string | undefined,
+            status: req.query.status as string | undefined,
+            page: num(req.query.page, 1),
+            limit: num(req.query.limit, 20),
+        });
+        sendResponse(res, { statusCode: 200, success: true, message: 'Staff order history fetched', meta, data: rows });
     }),
 
     // GET /analytics/report/pdf[?from&to] — the period's Sales report, or the all-time report without one

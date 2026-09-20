@@ -122,6 +122,53 @@ export interface PeriodOrdersArgs extends ReportPeriod {
     limit?: number;
 }
 
+/** Every order status a staff member can move an order to. */
+export type OrderStatus =
+    | 'pending' | 'confirmed' | 'processing' | 'shipped' | 'on_the_way'
+    | 'out_for_delivery' | 'delivery_attempt' | 'delivered' | 'cancelled' | 'returned' | 'refunded';
+
+/** One staff member's tally for the period. */
+export interface StaffRow {
+    actor: string;
+    name: string;
+    email: string;
+    role: string;
+    confirmed: number;
+    delivered: number;
+    cancelled: number;
+    other: number;
+    total: number;
+    confirmedValue: number;
+}
+
+export interface StaffActivityReport {
+    from: string;
+    to: string;
+    rows: StaffRow[];
+    trend: { day: string; confirmed: number; total: number }[];
+    totals: { confirmed: number; delivered: number; cancelled: number; total: number; confirmedValue: number };
+}
+
+export interface StaffHistoryRow {
+    id: string;
+    at: string;
+    actor: string;
+    name: string;
+    role: string;
+    orderId: string;
+    orderNo: string;
+    from: string;
+    to: string;
+    total: number;
+}
+
+export interface StaffHistoryArgs extends ReportPeriod {
+    actor?: string;
+    status?: OrderStatus | '';
+    page?: number;
+    limit?: number;
+}
+
 export const analyticsApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         // ── Sales report ──
@@ -155,6 +202,21 @@ export const analyticsApi = baseApi.injectEndpoints({
             }),
             providesTags: ['Analytics', 'Returns'],
         }),
+
+        /** Leaderboard: who moved how many orders in the period. */
+        getStaffActivity: builder.query<ApiResponse<StaffActivityReport>, ReportPeriod>({
+            query: ({ from, to }) => ({ url: '/analytics/staff-orders', params: { from, to } }),
+            providesTags: ['Analytics', 'Orders'],
+        }),
+
+        /** The raw change log behind the leaderboard, newest first. */
+        getStaffHistory: builder.query<PagedResponse<StaffHistoryRow[]>, StaffHistoryArgs>({
+            query: ({ from, to, actor, status, page, limit }) => ({
+                url: '/analytics/staff-orders/history',
+                params: { from, to, actor: actor || undefined, status: status || undefined, page, limit },
+            }),
+            providesTags: ['Analytics', 'Orders'],
+        }),
     }),
     overrideExisting: false,
 });
@@ -165,4 +227,6 @@ export const {
     useLazyGetSalesReportOrdersQuery,
     useGetLowStockQuery,
     useGetReturnsSummaryQuery,
+    useGetStaffActivityQuery,
+    useGetStaffHistoryQuery,
 } = analyticsApi;

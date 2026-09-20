@@ -654,15 +654,23 @@ const OrderService = {
             }
         }
 
+        // Who is making this change, for the staff activity report. Stays empty for
+        // customer-driven and courier-driven updates, which pass no actorId.
+        const actor = actorId
+            ? await User.findById(actorId).select('firstName lastName email role').lean()
+            : null;
+        const actorName = actor
+            ? [actor.firstName, actor.lastName].filter(Boolean).join(' ').trim() || actor.email || ''
+            : '';
+
         order.status = status as any;
-        order.timeline.push({ status, note: note || '', createdAt: new Date() } as any);
+        order.timeline.push({ status, note: note || '', actor: actorId || null, actorName, createdAt: new Date() } as any);
 
         // Admin status drives all packages too (keeps the two views consistent)
         for (const pkg of (order as any).packages || []) {
             if (pkg.status === 'cancelled' || pkg.status === 'returned' || pkg.status === 'refunded') continue;
-            const prev = pkg.status;
             pkg.status = status;
-            pkg.timeline.push({ status, note: note || 'Updated by admin', createdAt: new Date() });
+            pkg.timeline.push({ status, note: note || 'Updated by admin', actor: actorId || null, actorName, createdAt: new Date() });
         }
 
         // Update payment status when delivered
@@ -697,6 +705,29 @@ const OrderService = {
         }
 
         await closeFraudFlag(order._id, status, actorId);
+
+        // ── Staff activity (fire-and-forget) — this is what the editor report counts ──
+        if (actorId) {
+            try {
+                const { ActivityLogService } = require('../activityLog/activityLog.service');
+                ActivityLogService.logActivity({
+                    actor: actorId,
+                    actorName,
+                    action: `order_status_${status}`,
+                    target: `Order:${order.orderId || order._id}`,
+                    meta: {
+                        orderId: order._id.toString(),
+                        orderNo: order.orderId || '',
+                        from: prevOrderStatus,
+                        to: status,
+                        role: actor?.role || '',
+                        total: order.total ?? 0,
+                    },
+                }).catch(() => {});
+            } catch {
+                // never block a status update
+            }
+        }
 
         // ── Notify the customer of the status change (fire-and-forget) ──
         try {

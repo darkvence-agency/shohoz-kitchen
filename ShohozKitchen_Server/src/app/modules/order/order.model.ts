@@ -12,9 +12,15 @@ const orderItemSchema = new Schema({
 
 }, { _id: true });
 
+// `actor` is the staff member who made the change, or null when the customer,
+// a courier webhook or an automatic sync did it. Entries written before this
+// field existed have neither, so the staff report only covers changes from the
+// day it was added onwards.
 const timelineSchema = new Schema({
     status: { type: String },
     note: { type: String, default: '' },
+    actor: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    actorName: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },
 }, { _id: false });
 

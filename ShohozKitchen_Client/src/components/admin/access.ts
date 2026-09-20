@@ -34,7 +34,7 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
         'Staff roles, and deleting users',
     ],
     admin: [
-        'Dashboard, Reports, Orders, Products, Customers, Inventory, Settings and the rest',
+        'Dashboard, Reports, Staff activity, Orders, Products, Customers, Inventory, Settings and the rest',
         'No money pages (Accounts, Expenses, Investors, Courier payouts)',
         'No dealer pages (Suppliers, Purchases), no Roles',
         'Can block users but cannot delete them',

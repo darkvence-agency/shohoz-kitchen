@@ -8,6 +8,8 @@ import {
     revenueValidation,
     salesReportOrdersValidation,
     salesReportValidation,
+    staffActivityValidation,
+    staffHistoryValidation,
 } from './analytics.validation';
 
 const router = express.Router();
@@ -20,6 +22,10 @@ router.use(authMiddleware, authorizeRoles('admin'));
 // ── Sales report (period = ?from=YYYY-MM-DD&to=YYYY-MM-DD, Dhaka days) ──
 router.get('/sales-report', validateRequest(salesReportValidation), AnalyticsController.getSalesReport);
 router.get('/sales-report/orders', validateRequest(salesReportOrdersValidation), AnalyticsController.getSalesReportOrders);
+
+// ── Staff order activity (who confirmed what) — admins only, not editors ──
+router.get('/staff-orders', validateRequest(staffActivityValidation), AnalyticsController.getStaffActivity);
+router.get('/staff-orders/history', validateRequest(staffHistoryValidation), AnalyticsController.getStaffHistory);
 
 // ── Dashboard ──
 router.get('/dashboard', AnalyticsController.getDashboardSummary);

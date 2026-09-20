@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { IconType } from 'react-icons';
 import {
     LuLayoutDashboard, LuPackage, LuLayoutGrid, LuRuler, LuTags,
-    LuUsers, LuUserPen, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
+    LuUsers, LuUserPen, LuUserCheck, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
     LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight,
     LuReceipt, LuHandCoins, LuWallet, LuSettings,
     LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuShield,
@@ -72,6 +72,7 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
             { name: 'Update requests', href: '', icon: LuUserPen, status: 'new' },
             { name: 'Orders', href: '/dashboard/admin/orders', icon: LuShoppingCart, status: 'ok' },
             { name: 'Reports', href: '/dashboard/admin/analytics', icon: LuChartColumn, status: 'ok' },
+            { name: 'Staff activity', href: '/dashboard/admin/staff-activity', icon: LuUserCheck, status: 'ok' },
             { name: 'Reviews', href: '/dashboard/admin/reviews', icon: LuStar, status: 'ok' },
             { name: 'Coupons', href: '/dashboard/admin/coupons', icon: LuTicketPercent, status: 'ok' },
             { name: 'Returns', href: '/dashboard/admin/returns', icon: LuUndo2, status: 'ok' },
