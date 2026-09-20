@@ -54,15 +54,16 @@ app.use(cookieParser());
 
 // ── CORS ─────────────────────────────────────────────────────────
 const allowedOrigins = [
+    ...config.cors_origins,
     config.frontend_url,
     'http://localhost:3000',
     'http://localhost:3001',
-].filter(Boolean);
+].filter(Boolean).map((origin) => origin.replace(/\/+$/, ''));
 
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || config.env !== 'production') {
+        if (allowedOrigins.indexOf(origin.replace(/\/+$/, '')) !== -1 || config.env !== 'production') {
             callback(null, true);
         } else {
             // Production: reject unknown origins (dev stays fully open above).

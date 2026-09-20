@@ -33,6 +33,16 @@ export default {
 
     frontend_url: process.env.FRONTEND_URL || 'http://localhost:3000',
 
+    // Every origin the browser may call this API from, comma-separated. The site
+    // is reachable on more than one hostname (the live domain, its www form and
+    // the hosting provider's fallback domain), but frontend_url has to stay a
+    // single URL because verification and reset links are built from it.
+    // Defaults to frontend_url when unset.
+    cors_origins: (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+        .split(',')
+        .map((origin) => origin.trim().replace(/\/+$/, ''))
+        .filter(Boolean),
+
     // Public base URL of THIS backend — used to build absolute URLs for locally-stored
     // uploads (served from /uploads). Falls back to the payment backend URL, then localhost.
     backend_url: (process.env.BACKEND_URL || process.env.PAYMENT_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, ''),
