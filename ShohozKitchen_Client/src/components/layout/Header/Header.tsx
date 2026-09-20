@@ -253,7 +253,7 @@ const Header: React.FC = () => {
                                 </Link>
                             </div>
 
-                            {/* Right: wishlist · ship to · locale */}
+                            {/* Right: wishlist · track order · hotline */}
                             <div className="flex items-center gap-5">
                                 <Link href={wishlistHref} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
                                     <FiHeart size={13} strokeWidth={2} />
@@ -261,17 +261,15 @@ const Header: React.FC = () => {
                                 </Link>
                                 <Link href="/track" className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
                                     <FiMapPin size={13} strokeWidth={2} />
-                                    <span>Ship to</span>
+                                    <span>Track Order</span>
                                 </Link>
-                                <span className="flex items-center gap-1.5 select-none">
-                                    <span
-                                        className="inline-block w-[13px] h-[13px] rounded-full shrink-0"
-                                        style={{ background: 'var(--color-primary)' }}
-                                        aria-hidden
-                                    />
-                                    <span>EN/BDT</span>
-                                    <FiChevronDown size={12} strokeWidth={2.5} className="text-gray-500" />
-                                </span>
+                                {/* The hotline, straight from Site Content. Nothing shows until an admin adds one. */}
+                                {contactPhoneHref && contact.phone && (
+                                    <a href={contactPhoneHref} className="flex items-center gap-1.5 hover:opacity-70 transition-opacity">
+                                        <FiPhone size={13} strokeWidth={2} />
+                                        <span>{contact.phone}</span>
+                                    </a>
+                                )}
                             </div>
                         </div>
                     </div>
