@@ -7,10 +7,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { IconType } from 'react-icons';
 import {
     LuLayoutDashboard, LuPackage, LuLayoutGrid, LuRuler, LuTags,
-    LuUsers, LuUserPen, LuUserCheck, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
-    LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight,
-    LuReceipt, LuHandCoins, LuWallet, LuSettings,
+    LuUsers, LuUserCheck, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
+    LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight, LuScanLine,
+    LuReceipt, LuHandCoins, LuWallet, LuSettings, LuActivity,
     LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuShield,
+    LuMessageSquare, LuMessagesSquare,
     LuPanelLeft, LuChevronRight, LuLogOut, LuX,
 } from 'react-icons/lu';
 import NotificationBell from '@/components/notifications/NotificationBell';
@@ -21,115 +22,100 @@ import { ADMIN_ROOT, ROLE_LABEL, canOpen, homeFor } from './access';
 
 interface AdminLayoutProps { children: React.ReactNode; }
 
-/**
- * Menu status against the client's requirement screenshots:
- *   'ok'      — built and matches (green)
- *   'partial' — something exists but the scope/shape differs (yellow)
- *   'new'     — nothing built yet (red); these do not navigate anywhere
- *   'extra'   — ours, not in the client's design (grey)
- */
-type MenuStatus = 'ok' | 'partial' | 'new' | 'extra';
-
-export const STATUS_COLOR: Record<MenuStatus, string> = {
-    ok: '#22c55e',
-    partial: '#eab308',
-    new: '#ef4444',
-    extra: '#94a3b8',
-};
-
-const STATUS_TITLE: Record<MenuStatus, string> = {
-    ok: 'Matches the client requirement',
-    partial: 'Partly built — needs changes',
-    new: 'Not built yet',
-    extra: 'Extra — not in the client design',
-};
-
 // Who sees an item follows the page rules in ./access (canOpen), so the menu and the
-// pages never disagree.
-type MenuItem = { name: string; href: string; icon: IconType; status: MenuStatus };
+// pages never disagree. Sections with nothing visible to the role are dropped.
+type MenuItem = { name: string; href: string; icon: IconType };
 
-// Grouped exactly as the client's screenshots show the sidebar.
+// Ordered by how often the shop actually needs them: the day's work first
+// (orders, catalogue, stock), then buying, people, money, and settings last.
 const menuSections: { label: string; items: MenuItem[] }[] = [
     {
         label: '',
         items: [
-            { name: 'Dashboard', href: '/dashboard/admin', icon: LuLayoutDashboard, status: 'ok' },
+            { name: 'Dashboard', href: '/dashboard/admin', icon: LuLayoutDashboard },
+        ],
+    },
+    {
+        label: 'Orders',
+        items: [
+            { name: 'Orders', href: '/dashboard/admin/orders', icon: LuShoppingCart },
+            { name: 'Returns', href: '/dashboard/admin/returns', icon: LuUndo2 },
+            { name: 'Fraud check', href: '/dashboard/admin/fraud-check', icon: LuShieldAlert },
+            // Steadfast parcel booking and sync.
+            { name: 'Courier parcels', href: '/dashboard/admin/courier', icon: LuTruck },
         ],
     },
     {
         label: 'Catalog',
         items: [
-            { name: 'Products', href: '/dashboard/admin/products', icon: LuPackage, status: 'ok' },
-            { name: 'Categories', href: '/dashboard/admin/categories', icon: LuLayoutGrid, status: 'ok' },
-            { name: 'Units', href: '/dashboard/admin/units', icon: LuRuler, status: 'ok' },
-            { name: 'Attributes', href: '/dashboard/admin/attributes', icon: LuTags, status: 'ok' },
-        ],
-    },
-    {
-        label: 'Sales & CRM',
-        items: [
-            { name: 'Customers', href: '/dashboard/admin/customers', icon: LuUsers, status: 'ok' },
-            { name: 'Update requests', href: '', icon: LuUserPen, status: 'new' },
-            { name: 'Orders', href: '/dashboard/admin/orders', icon: LuShoppingCart, status: 'ok' },
-            { name: 'Reports', href: '/dashboard/admin/analytics', icon: LuChartColumn, status: 'ok' },
-            { name: 'Staff activity', href: '/dashboard/admin/staff-activity', icon: LuUserCheck, status: 'ok' },
-            { name: 'Reviews', href: '/dashboard/admin/reviews', icon: LuStar, status: 'ok' },
-            { name: 'Coupons', href: '/dashboard/admin/coupons', icon: LuTicketPercent, status: 'ok' },
-            { name: 'Returns', href: '/dashboard/admin/returns', icon: LuUndo2, status: 'ok' },
-            { name: 'Fraud check', href: '/dashboard/admin/fraud-check', icon: LuShieldAlert, status: 'ok' },
-        ],
-    },
-    {
-        label: 'Procurement',
-        items: [
-            { name: 'Suppliers', href: '/dashboard/admin/suppliers', icon: LuStore, status: 'ok' },
-            { name: 'Purchases', href: '/dashboard/admin/purchases', icon: LuTruck, status: 'ok' },
+            { name: 'Products', href: '/dashboard/admin/products', icon: LuPackage },
+            { name: 'Categories', href: '/dashboard/admin/categories', icon: LuLayoutGrid },
+            { name: 'Attributes', href: '/dashboard/admin/attributes', icon: LuTags },
+            { name: 'Units', href: '/dashboard/admin/units', icon: LuRuler },
+            { name: 'Reviews', href: '/dashboard/admin/reviews', icon: LuStar },
+            { name: 'Offers & flash sales', href: '/dashboard/admin/offers', icon: LuZap },
+            { name: 'Coupons', href: '/dashboard/admin/coupons', icon: LuTicketPercent },
         ],
     },
     {
         label: 'Inventory',
         items: [
-            { name: 'Warehouses', href: '/dashboard/admin/warehouses', icon: LuWarehouse, status: 'ok' },
-            { name: 'Inventory', href: '/dashboard/admin/inventory', icon: LuBoxes, status: 'ok' },
-            { name: 'Transfers', href: '/dashboard/admin/transfers', icon: LuArrowLeftRight, status: 'ok' },
+            { name: 'Stock', href: '/dashboard/admin/inventory', icon: LuBoxes },
+            { name: 'Warehouses', href: '/dashboard/admin/warehouses', icon: LuWarehouse },
+            { name: 'Transfers', href: '/dashboard/admin/transfers', icon: LuArrowLeftRight },
+            { name: 'Barcode scanner', href: '/dashboard/admin/scanner', icon: LuScanLine },
         ],
     },
     {
-        label: 'Accounts',
+        label: 'Purchasing',
         items: [
-            { name: 'Overview', href: '/dashboard/admin/accounts', icon: LuLayoutGrid, status: 'ok' },
-            { name: 'Expenses', href: '/dashboard/admin/expenses', icon: LuReceipt, status: 'ok' },
-            { name: 'Investors', href: '/dashboard/admin/investors', icon: LuHandCoins, status: 'ok' },
-            { name: 'Courier payouts', href: '/dashboard/admin/courier-payouts', icon: LuWallet, status: 'partial' },
+            { name: 'Suppliers', href: '/dashboard/admin/suppliers', icon: LuStore },
+            { name: 'Purchases', href: '/dashboard/admin/purchases', icon: LuTruck },
         ],
     },
     {
-        label: 'Administration',
+        label: 'Customers',
         items: [
-            { name: 'Settings', href: '/dashboard/admin/settings', icon: LuSettings, status: 'ok' },
+            { name: 'Customers', href: '/dashboard/admin/customers', icon: LuUsers },
+            { name: 'Inquiries', href: '/dashboard/admin/inquiries', icon: LuMessageSquare },
+            { name: 'Support messages', href: '/dashboard/admin/messages', icon: LuMessagesSquare },
         ],
     },
-    // Ours — kept, but absent from the client's screenshots.
     {
-        label: 'Extra (ours)',
+        label: 'Reports',
         items: [
-            // Steadfast parcel booking/sync — was reached through "Courier payouts" until that page existed.
-            { name: 'Courier parcels', href: '/dashboard/admin/courier', icon: LuTruck, status: 'extra' },
-            { name: 'Offers & Flash Sales', href: '/dashboard/admin/offers', icon: LuZap, status: 'extra' },
-            { name: 'Payments', href: '/dashboard/admin/payments', icon: LuCreditCard, status: 'extra' },
-            { name: 'Site Content', href: '/dashboard/admin/site-content', icon: LuLayoutTemplate, status: 'extra' },
-            { name: 'Profile', href: '/dashboard/admin/profile', icon: LuUser, status: 'extra' },
-            { name: 'Roles & Permissions', href: '/dashboard/admin/roles', icon: LuShield, status: 'extra' },
+            { name: 'Sales reports', href: '/dashboard/admin/analytics', icon: LuChartColumn },
+            { name: 'Staff activity', href: '/dashboard/admin/staff-activity', icon: LuUserCheck },
+        ],
+    },
+    {
+        label: 'Finance',
+        items: [
+            { name: 'Accounts overview', href: '/dashboard/admin/accounts', icon: LuLayoutGrid },
+            { name: 'Expenses', href: '/dashboard/admin/expenses', icon: LuReceipt },
+            { name: 'Investors', href: '/dashboard/admin/investors', icon: LuHandCoins },
+            { name: 'Payments', href: '/dashboard/admin/payments', icon: LuCreditCard },
+            { name: 'Courier payouts', href: '/dashboard/admin/courier-payouts', icon: LuWallet },
+        ],
+    },
+    {
+        label: 'Settings',
+        items: [
+            { name: 'Store settings', href: '/dashboard/admin/settings', icon: LuSettings },
+            { name: 'Shipping', href: '/dashboard/admin/shipping', icon: LuTruck },
+            { name: 'Site content', href: '/dashboard/admin/site-content', icon: LuLayoutTemplate },
+            { name: 'Roles & permissions', href: '/dashboard/admin/roles', icon: LuShield },
+            { name: 'System health', href: '/dashboard/admin/health', icon: LuActivity },
+            { name: 'My profile', href: '/dashboard/admin/profile', icon: LuUser },
         ],
     },
 ];
 
-const allMenuItems = menuSections.flatMap((s) => s.items).filter((i) => i.href);
+const allMenuItems = menuSections.flatMap((s) => s.items);
 const ROOT = ADMIN_ROOT;
 
-/** A menu item shows when the role may open its page (unbuilt ones: super admin and admin only). */
-const showItem = (role: string | undefined, item: MenuItem) =>
-    item.href ? canOpen(role, item.href) : role === 'superadmin' || role === 'admin';
+/** A menu item shows when the role may open the page behind it. */
+const showItem = (role: string | undefined, item: MenuItem) => canOpen(role, item.href);
 
 /** The menu item a path belongs to — the longest href that prefixes it. */
 function matchItem(pathname: string): MenuItem | undefined {
@@ -196,54 +182,22 @@ function Sidebar({ pathname, role, onClose, onLogout }: {
                         {section.label && <p className="px-3 pb-1 pt-4 text-xs font-medium text-gray-500">{section.label}</p>}
                         {items.map((item) => {
                             const on = isActive(item);
-                            // Nothing is built behind a red item yet, so it must not navigate.
-                            const unbuilt = item.status === 'new' || !item.href;
                             const Icon = item.icon;
-                            const body = (
-                                <>
-                                    <Icon size={17} className={on ? 'text-[var(--color-primary)]' : unbuilt ? 'text-gray-300' : 'text-gray-500 group-hover:text-gray-700'} />
-                                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                                    <span
-                                        title={STATUS_TITLE[item.status]}
-                                        className="h-1.5 w-1.5 shrink-0 rounded-full"
-                                        style={{ background: STATUS_COLOR[item.status] }}
-                                    />
-                                </>
-                            );
                             const cls = 'group flex h-9 items-center gap-3 rounded-lg px-3 text-sm transition-colors';
-                            return unbuilt ? (
-                                <div key={item.name} title={STATUS_TITLE[item.status]} className={`${cls} cursor-not-allowed text-gray-400`}>{body}</div>
-                            ) : (
+                            return (
                                 <Link
                                     key={item.name}
                                     href={item.href}
                                     className={`${cls} ${on ? 'bg-gray-200/60 font-medium text-gray-900' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'}`}
                                 >
-                                    {body}
+                                    <Icon size={17} className={on ? 'text-[var(--color-primary)]' : 'text-gray-500 group-hover:text-gray-700'} />
+                                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
                                 </Link>
                             );
                         })}
                     </div>
                 ))}
             </nav>
-
-            {/* Legend — what the dots beside each menu mean */}
-            <div className="shrink-0 border-t border-gray-200 px-4 py-3">
-                <p className="mb-2 text-[11px] font-medium text-gray-500">Against client requirement</p>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    {([
-                        ['ok', 'Done'],
-                        ['partial', 'Partly done'],
-                        ['new', 'Not built yet'],
-                        ['extra', 'Extra (ours)'],
-                    ] as [MenuStatus, string][]).map(([key, label]) => (
-                        <div key={key} className="flex items-center gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_COLOR[key] }} />
-                            <span className="text-[11px] text-gray-500">{label}</span>
-                        </div>
-                    ))}
-                </div>
-            </div>
 
             <div className="shrink-0 border-t border-gray-200 p-3">
                 <button
