@@ -27,9 +27,6 @@ import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
 import UnitSelect from '@/components/dashboard/UnitSelect';
 import { toast } from 'react-hot-toast';
 
-// Thumbnail of a draft quick-added from Inventory (served from /public; the server's
-// inventory.service DRAFT_PLACEHOLDER_THUMBNAIL). Never accepted as a product photo.
-const DRAFT_PLACEHOLDER_THUMBNAIL = '/images/placeholder-product.svg';
 
 // ── Toggle Switch Component ──────────────────────────────────
 const Toggle = ({ label, name, checked, onChange, color = 'bg-emerald-500' }: any) => (
@@ -283,21 +280,15 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
     const validateForm = (): boolean => {
         const newErrors: Record<string, string> = {};
 
-        // Required fields
+        // Only the name and the price are required — a product can be added now and
+        // finished later. Everything below only complains about values that are
+        // actually wrong, never about values that are simply missing.
         if (!formData.name || formData.name.trim().length === 0) {
             newErrors.name = 'Product name is required';
         } else if (formData.name.trim().length < 3) {
             newErrors.name = 'Product name must be at least 3 characters';
         } else if (formData.name.length > 200) {
             newErrors.name = 'Product name cannot exceed 200 characters';
-        }
-
-        if (!formData.description || formData.description.replace(/<[^>]*>/g, '').trim().length === 0) {
-            newErrors.description = 'Product description is required';
-        }
-
-        if (!formData.category) {
-            newErrors.category = 'Please select a category';
         }
 
         const priceNum = parseFloat(formData.price);
@@ -311,24 +302,8 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
             newErrors.originalPrice = 'Original price should be higher than offer price';
         }
 
-        if (!formData.thumbnail || formData.thumbnail.trim().length === 0) {
-            newErrors.thumbnail = 'Product thumbnail image is required';
-        }
-
-        // Min 3 images: thumbnail counts as 1, gallery must supply at least 2 more.
-        // The placeholder a quick-added Inventory draft starts with is not a real photo: it
-        // may stay while the product is a draft, but never goes live on the storefront.
-        const publishing = formData.status !== 'draft';
-        const isPlaceholder = (u: string) => publishing && u === DRAFT_PLACEHOLDER_THUMBNAIL;
-        if (isPlaceholder((formData.thumbnail || '').trim())) {
-            newErrors.thumbnail = 'Replace the placeholder with a real product photo before publishing';
-        }
-        const allImages = [formData.thumbnail, ...(formData.images || [])]
-            .map((u: string) => (u || '').trim())
-            .filter((u: string) => u !== '' && !isPlaceholder(u));
-        if (allImages.length < 3) {
-            newErrors.images = 'At least 3 images are required (thumbnail + 2 more)';
-        }
+        // Photos are optional. A product with none shows the placeholder on the
+        // storefront until a real one is uploaded.
 
         if (formData.tagline && formData.tagline.length > 200) {
             newErrors.tagline = 'Tagline cannot exceed 200 characters';
@@ -582,8 +557,8 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                         <div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-1.5" data-field="category">
-                                    <label className="text-sm font-semibold text-gray-700">Category <span className="text-red-400">*</span></label>
-                                    <select name="category" required className={`w-full px-3.5 py-2.5 bg-white border rounded-md text-sm font-semibold outline-none cursor-pointer ${errors.category ? 'border-red-400 bg-red-50/30' : 'border-gray-200 focus:border-[var(--color-primary)]'}`}
+                                    <label className="text-sm font-semibold text-gray-700">Category</label>
+                                    <select name="category" className={`w-full px-3.5 py-2.5 bg-white border rounded-md text-sm font-semibold outline-none cursor-pointer ${errors.category ? 'border-red-400 bg-red-50/30' : 'border-gray-200 focus:border-[var(--color-primary)]'}`}
                                         value={formData.category}
                                         onChange={(e) => { clearError('category'); setFormData((prev: any) => ({ ...prev, category: e.target.value, subCategory: '', childCategory: '' })); }}>
                                         <option value="">Select Category</option>
@@ -683,7 +658,7 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                         </div>
 
                         <div className="space-y-1.5" data-field="description">
-                            <label className="text-sm font-semibold text-gray-700">Product Description <span className="text-red-400">*</span></label>
+                            <label className="text-sm font-semibold text-gray-700">Product Description</label>
                             <div className={`product-editor-wrapper ${errors.description ? 'ring-1 ring-red-400 rounded-md' : ''}`}>
                                 {isEditing && !isDataLoaded ? (
                                     <div className="h-[300px] bg-gray-50 border border-gray-200 rounded-md animate-pulse flex flex-col items-center justify-center text-gray-400 text-sm gap-2">
@@ -1104,13 +1079,12 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                     {/* ── Media Assets ──────────────────────────────── */}
                     <div className={`bg-white p-6 rounded-md border shadow-sm space-y-4 ${(errors.thumbnail || errors.images) ? 'border-red-300 ring-1 ring-red-200' : 'border-gray-200'}`} data-field="thumbnail">
                         <h3 className="font-bold text-gray-800 flex items-center gap-2"><FiImage className="text-blue-500" /> Media Assets</h3>
-                        <p className="text-[11px] text-gray-400 -mt-2">At least 3 images required (1 thumbnail + 2 gallery)</p>
+                        <p className="text-[11px] text-gray-400 -mt-2">Optional — a product with no photo shows a placeholder until you add one</p>
                         <SingleImageUploader
                             label="Product Thumbnail"
                             hint="Recommended: 1000×1000px (1:1 square)"
                             value={formData.thumbnail}
                             onChange={(url: string) => { setFormData((prev: any) => ({ ...prev, thumbnail: url })); clearError('thumbnail'); clearError('images'); }}
-                            required
                         />
                         {errors.thumbnail && <p className="text-xs text-red-500 font-medium">⚠ {errors.thumbnail}</p>}
                         <div data-field="images">

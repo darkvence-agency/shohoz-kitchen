@@ -57,14 +57,10 @@ export default function BulkUploadModal({ onClose }: { onClose: () => void }) {
             }
             row[key] = val;
         });
-        // Client-side per-row checks (mirror backend rules)
+        // Client-side per-row checks (mirror backend rules): name and price only.
+        // A row may leave the description, category and images out and be filled in later.
         if (!row.name) row.__errors.push('name is required');
         if (row.price === '' || isNaN(Number(row.price)) || Number(row.price) <= 0) row.__errors.push('price must be positive');
-        if (!row.thumbnail) row.__errors.push('thumbnail is required');
-        if (!row.category) row.__errors.push('category is required');
-        if (!row.description) row.__errors.push('description is required');
-        const imgCount = [row.thumbnail, ...(Array.isArray(row.images) ? row.images : [])].filter(Boolean).length;
-        if (imgCount < 3) row.__errors.push('at least 3 images required (thumbnail + 2 in images, pipe-separated)');
         return row;
     };
 

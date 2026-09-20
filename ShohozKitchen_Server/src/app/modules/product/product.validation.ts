@@ -5,8 +5,10 @@ import { z } from 'zod';
 //   1) wrapped in { body } + .refine for the single-create request, and
 //   2) nested inside the bulk-upload products[] array.
 const productCreateShape = z.object({
+    // Only name and price are required. Everything else can be filled in later —
+    // adding a product should not mean filling a long form first.
     name:          z.string({ required_error: 'Product name is required', invalid_type_error: 'Product name is required' }).min(1, 'Product name is required').max(200),
-    description:   z.string({ required_error: 'Description is required', invalid_type_error: 'Description is required' }).min(1, 'Description is required'),
+    description:   z.string().optional(),
     tagline:       z.string().max(200).optional(),
     priceType:     z.enum(['fixed', 'negotiable']).optional(),
     productType:   z.enum(['simple', 'variable', 'multi-color']).optional(),
@@ -22,11 +24,12 @@ const productCreateShape = z.object({
     offerEndDate:   z.string().or(z.date()).optional().nullable(),
 
     // Images
-    thumbnail: z.string({ required_error: 'Thumbnail is required', invalid_type_error: 'Thumbnail is required' }).min(1, 'Thumbnail is required'),
+    // No photo yet → the model falls back to the placeholder image.
+    thumbnail: z.string().optional(),
     images:    z.array(z.string()).optional(),
 
-    // Category
-    category:      z.string({ required_error: 'Category is required', invalid_type_error: 'Category is required' }).min(1, 'Category is required'),
+    // Category — a product without one simply does not show up under any category.
+    category:      z.string().optional(),
     subCategory:   z.string().optional(),
     childCategory: z.string().optional(),
 
@@ -115,21 +118,8 @@ const productCreateShape = z.object({
     metaKeywords:    z.array(z.string()).optional(),
 });
 
-// ── Min-3-images rule (1 thumbnail + 2 more) ────────────────────────────
-// Combined set [thumbnail, ...images] must contain at least 3 non-empty entries.
-const hasMinThreeImages = (data: { thumbnail?: string; images?: string[] }) => {
-    const combined = [data.thumbnail, ...(data.images ?? [])].filter(
-        (img) => typeof img === 'string' && img.trim().length > 0
-    );
-    return combined.length >= 3;
-};
-const minImagesMessage = 'At least 3 product images are required (1 thumbnail + 2 more)';
-
 export const createProductValidation = z.object({
-    body: productCreateShape.refine(hasMinThreeImages, {
-        message: minImagesMessage,
-        path: ['images'],
-    }),
+    body: productCreateShape,
 });
 
 export const updateProductValidation = z.object({
@@ -140,14 +130,7 @@ export const updateProductValidation = z.object({
 // Each row also enforces the min-3-images rule so invalid rows are caught.
 export const bulkUploadValidation = z.object({
     body: z.object({
-        products: z
-            .array(
-                productCreateShape.refine(hasMinThreeImages, {
-                    message: minImagesMessage,
-                    path: ['images'],
-                })
-            )
-            .min(1, 'At least one product is required'),
+        products: z.array(productCreateShape).min(1, 'At least one product is required'),
     }),
 });
 

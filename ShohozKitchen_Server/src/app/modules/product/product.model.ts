@@ -26,7 +26,7 @@ const productSchema = new Schema(
         name:        { type: String, required: [true, 'Product name is required'], trim: true, maxlength: 200 },
         slug:        { type: String, unique: true, lowercase: true },
         sku:         { type: String, unique: true, sparse: true },
-        description: { type: String, required: [true, 'Description is required'] },
+        description: { type: String, default: '' },
         tagline:     { type: String, maxlength: 200, default: 'Lower price than others but quality higher' },
         priceType:   { type: String, enum: ['fixed', 'negotiable'], default: 'negotiable' },
         productType: { type: String, enum: ['simple', 'variable', 'multi-color'], default: 'simple' },
@@ -43,12 +43,14 @@ const productSchema = new Schema(
         offerEndDate:   { type: Date, default: null },
 
         // ── Images ──────────────────────────────────────────────
-        thumbnail: { type: String, required: [true, 'Thumbnail is required'] },
+        // A product added in a hurry may have no photo yet; the storefront shows the
+        // placeholder until one is uploaded.
+        thumbnail: { type: String, default: '/images/placeholder-product.svg' },
         images:    [{ type: String }],
 
 
         // ── Category ─────────────────────────────────────────────
-        category:      { type: Schema.Types.ObjectId, ref: 'Category', required: true },
+        category:      { type: Schema.Types.ObjectId, ref: 'Category', default: null },
         subCategory:   { type: Schema.Types.ObjectId, ref: 'Category', default: null },
         childCategory: { type: Schema.Types.ObjectId, ref: 'Category', default: null },
 
