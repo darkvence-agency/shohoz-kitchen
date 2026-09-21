@@ -8,7 +8,7 @@ import type { IconType } from 'react-icons';
 import {
     LuLayoutDashboard, LuPackage, LuLayoutGrid, LuRuler, LuTags,
     LuUsers, LuUserCheck, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
-    LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight, LuScanLine,
+    LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight,
     LuReceipt, LuHandCoins, LuWallet, LuSettings, LuActivity,
     LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuUserCog, LuShield,
     LuMessageSquare, LuMessagesSquare, LuChartLine, LuTarget, LuSearch, LuGlobe,
@@ -63,7 +63,6 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
             { name: 'Stock', href: '/dashboard/admin/inventory', icon: LuBoxes },
             { name: 'Warehouses', href: '/dashboard/admin/warehouses', icon: LuWarehouse },
             { name: 'Transfers', href: '/dashboard/admin/transfers', icon: LuArrowLeftRight },
-            { name: 'Barcode scanner', href: '/dashboard/admin/scanner', icon: LuScanLine },
         ],
     },
     {
