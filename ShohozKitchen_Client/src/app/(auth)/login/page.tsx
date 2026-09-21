@@ -11,7 +11,7 @@ import { useLoginMutation } from '@/redux/api/authApi';
 import { useMergeWishlistMutation } from '@/redux/api/userApi';
 import { toast } from 'react-hot-toast';
 import { FiLock, FiEye, FiEyeOff, FiArrowRight, FiAlertCircle, FiUser } from 'react-icons/fi';
-import GoogleSignInButton from '@/components/shared/GoogleSignInButton';
+import GoogleSignInButton, { GOOGLE_SIGN_IN_ENABLED } from '@/components/shared/GoogleSignInButton';
 import { canOpen, homeFor } from '@/components/admin/access';
 
 const inputCls =
@@ -187,15 +187,19 @@ const LoginPageInner = () => {
                 </button>
             </form>
 
-            {/* Divider */}
-            <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-[12px] font-medium text-slate-400">or continue with</span>
-                <div className="h-px flex-1 bg-slate-200" />
-            </div>
+            {GOOGLE_SIGN_IN_ENABLED && (
+                <>
+                    {/* Divider */}
+                    <div className="my-6 flex items-center gap-3">
+                        <div className="h-px flex-1 bg-slate-200" />
+                        <span className="text-[12px] font-medium text-slate-400">or continue with</span>
+                        <div className="h-px flex-1 bg-slate-200" />
+                    </div>
 
-            {/* Google */}
-            <GoogleSignInButton redirectPath={redirectPath} label="Continue with Google" />
+                    {/* Google */}
+                    <GoogleSignInButton redirectPath={redirectPath} label="Continue with Google" />
+                </>
+            )}
 
             <div className="mt-7 pt-6 border-t border-slate-100 text-center">
                 <p className="text-[13px] text-slate-500">

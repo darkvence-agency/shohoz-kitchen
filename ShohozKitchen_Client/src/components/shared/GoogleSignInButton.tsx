@@ -8,6 +8,10 @@ import { useGoogleLoginMutation } from '@/redux/api/authApi';
 import { toast } from 'react-hot-toast';
 import { canOpen, homeFor, isStaffRole } from '@/components/admin/access';
 
+// Hidden on the login and register pages until Google sign-in is set up.
+// Set to true to show it again; the button and the server side are unchanged.
+export const GOOGLE_SIGN_IN_ENABLED = false;
+
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 
 // Load the Google Identity Services script once (resolves immediately if present).

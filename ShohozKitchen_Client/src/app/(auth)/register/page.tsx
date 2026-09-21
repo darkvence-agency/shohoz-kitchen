@@ -9,7 +9,7 @@ import { loginSuccess } from '@/redux/slices/authSlice';
 import { useRegisterMutation } from '@/redux/api/authApi';
 import { toast } from 'react-hot-toast';
 import { FiUser, FiLock, FiEye, FiEyeOff, FiArrowRight, FiMapPin, FiMail, FiPhone, FiCheckCircle } from 'react-icons/fi';
-import GoogleSignInButton from '@/components/shared/GoogleSignInButton';
+import GoogleSignInButton, { GOOGLE_SIGN_IN_ENABLED } from '@/components/shared/GoogleSignInButton';
 
 const inputCls =
     'w-full pl-11 pr-4 py-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-800 placeholder-slate-400 outline-none transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15';
@@ -205,15 +205,19 @@ const RegisterPageInner = () => {
                 </button>
             </form>
 
-            {/* Divider */}
-            <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-slate-200" />
-                <span className="text-[12px] font-medium text-slate-400">or sign up with</span>
-                <div className="h-px flex-1 bg-slate-200" />
-            </div>
+            {GOOGLE_SIGN_IN_ENABLED && (
+                <>
+                    {/* Divider */}
+                    <div className="my-5 flex items-center gap-3">
+                        <div className="h-px flex-1 bg-slate-200" />
+                        <span className="text-[12px] font-medium text-slate-400">or sign up with</span>
+                        <div className="h-px flex-1 bg-slate-200" />
+                    </div>
 
-            {/* Google */}
-            <GoogleSignInButton redirectPath={redirectPath} label="Sign up with Google" />
+                    {/* Google */}
+                    <GoogleSignInButton redirectPath={redirectPath} label="Sign up with Google" />
+                </>
+            )}
 
             <div className="mt-6 pt-5 border-t border-slate-100 text-center">
                 <p className="text-[13px] text-slate-500">
