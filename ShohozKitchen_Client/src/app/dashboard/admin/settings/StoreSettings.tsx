@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { LuRotateCcw } from 'react-icons/lu';
 import { useGetSiteContentQuery, useUpdateSiteContentMutation } from '@/redux/api/siteContentApi';
 import { SingleImageUploader } from '@/components/ui/ImageUploader';
 import { Badge, Btn, Card, Field, INPUT, cx } from '@/components/admin/ui';
 import { CardSkeleton, Note, SaveRow } from './parts';
-import { apiError, cssRootDefault, isHexColor } from './helpers';
+import { apiError } from './helpers';
+import Logo from '@/components/shared/Logo';
 
-type Theme = { primaryColor?: string; secondaryColor?: string; logoUrl?: string; faviconUrl?: string };
+// Brand colours are fixed in the code (globals.css); only the logo is set here.
+type Theme = { logoUrl?: string; faviconUrl?: string; logoHeight?: string };
 type General = { storeName?: string; tagline?: string; currency?: string };
 type SiteContent = { theme?: Theme; general?: General };
 
@@ -65,7 +66,7 @@ export default function StoreSettings() {
     // Keyed on the saved section, so a card resets once its save has been refetched.
     return (
         <div className="space-y-5">
-            <BrandCard key={JSON.stringify(theme)} saved={theme} storeName={general.storeName} />
+            <LogoCard key={JSON.stringify(theme)} saved={{ logoUrl: theme.logoUrl, faviconUrl: theme.faviconUrl, logoHeight: theme.logoHeight ? String(theme.logoHeight) : undefined }} />
             <div className="grid items-start gap-5 lg:grid-cols-2">
                 <StoreInfoCard key={JSON.stringify(general)} saved={general} />
                 <Note>
@@ -77,94 +78,35 @@ export default function StoreSettings() {
     );
 }
 
-/* ─── Brand colours & logo ────────────────────────────────── */
+/* ─── Logo ────────────────────────────────────────────────── */
 
-function BrandCard({ saved, storeName }: { saved: Theme; storeName?: string }) {
+const LOGO_MIN = 24;
+const LOGO_MAX = 80;
+const LOGO_DEFAULT = 42;
+
+function LogoCard({ saved }: { saved: Theme }) {
     const [update, { isLoading: saving }] = useUpdateSiteContentMutation();
-    const { values, set, changed, dirty, discard } = useSectionDraft<Theme>(saved);
-    // '' = use the built-in colour; anything else typed must be a full #rrggbb.
-    const badColour = (['primaryColor', 'secondaryColor'] as const)
-        .some((k) => changed(k) && !!values[k] && !isHexColor(values[k]));
-
-    // The built-in colours from globals.css — shown when no custom colour is saved.
-    const defaults = useMemo(() => ({
-        primary: cssRootDefault('--color-primary'),
-        secondary: cssRootDefault('--color-secondary'),
-    }), []);
-    const primary = isHexColor(values.primaryColor) ? values.primaryColor : (defaults.primary || 'var(--color-primary)');
-    const secondary = isHexColor(values.secondaryColor) ? values.secondaryColor : (defaults.secondary || 'var(--color-secondary)');
-    const usingDefaults = !isHexColor(values.primaryColor) && !isHexColor(values.secondaryColor);
+    const { values, set, dirty, discard } = useSectionDraft<Theme>(saved);
+    const height = Math.min(LOGO_MAX, Math.max(LOGO_MIN, Number(values.logoHeight) || LOGO_DEFAULT));
+    const uploaded = values.logoUrl && values.logoUrl !== '/logo.svg';
 
     const onSave = async () => {
         try {
-            await update({ theme: values }).unwrap();
-            toast.success('Brand saved');
+            await update({ theme: { logoUrl: values.logoUrl, faviconUrl: values.faviconUrl, logoHeight: height } }).unwrap();
+            toast.success('Logo saved');
         } catch (err) {
-            toast.error(apiError(err, 'Could not save the brand settings'));
+            toast.error(apiError(err, 'Could not save the logo'));
         }
     };
 
     return (
-        <Card
-            title="Brand colours & logo"
-            description="Your website's brand colour, accent colour, logo and browser-tab icon."
-            actions={(
-                <Btn
-                    variant="ghost"
-                    icon={<LuRotateCcw size={14} />}
-                    disabled={usingDefaults}
-                    onClick={() => { set('primaryColor', ''); set('secondaryColor', ''); }}
-                >
-                    Use default colours
-                </Btn>
-            )}
-        >
+        <Card title="Logo" description="The logo in the website header, how big it shows, and the browser-tab icon.">
             <div className="grid gap-4 md:grid-cols-2">
-                <ColorField
-                    label="Primary colour"
-                    description="Buttons, links and highlights"
-                    value={values.primaryColor || ''}
-                    fallback={defaults.primary}
-                    onChange={(v) => set('primaryColor', v)}
-                />
-                <ColorField
-                    label="Secondary colour"
-                    description="Sale badges and accent buttons"
-                    value={values.secondaryColor || ''}
-                    fallback={defaults.secondary}
-                    onChange={(v) => set('secondaryColor', v)}
-                />
-            </div>
-
-            {/* Live preview */}
-            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <p className="mb-3 text-xs font-medium uppercase tracking-wider text-gray-400">Preview</p>
-                <div className="mb-3">
-                    {values.logoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={values.logoUrl} alt="Logo preview" className="h-8 max-w-[200px] object-contain" />
-                    ) : (
-                        <span className="inline-flex h-8 items-center rounded-md px-3 text-sm font-semibold text-white" style={{ background: primary }}>
-                            {storeName || 'Shohoz Kitchen'}
-                        </span>
-                    )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="inline-flex h-8 items-center rounded-full px-4 text-xs font-semibold text-white" style={{ background: primary }}>Buy now</span>
-                    <span className="inline-flex h-8 items-center rounded-full px-4 text-xs font-semibold text-white" style={{ background: secondary }}>Sale 50% off</span>
-                    <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-white" style={{ background: primary }}>New arrival</span>
-                    <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-white" style={{ background: secondary }}>Hot deal</span>
-                    <span className="text-sm font-semibold underline" style={{ color: primary }}>Sample link</span>
-                    <span className="text-sm font-semibold" style={{ color: secondary }}>৳2,499</span>
-                </div>
-            </div>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <SingleImageUploader
                     label="Website logo"
-                    hint="Shown in the header and footer. 400×120px, PNG or SVG with a transparent background."
-                    value={values.logoUrl || ''}
-                    onChange={(url) => set('logoUrl', url)}
+                    hint="PNG or SVG with a transparent background, about 400×120px. Leave empty to use the built-in logo."
+                    value={uploaded ? values.logoUrl || '' : ''}
+                    onChange={(url) => set('logoUrl', url || '/logo.svg')}
                 />
                 <SingleImageUploader
                     label="Favicon"
@@ -174,50 +116,33 @@ function BrandCard({ saved, storeName }: { saved: Theme; storeName?: string }) {
                 />
             </div>
 
-            <SaveRow
-                canSave={dirty && !badColour}
-                dirty={dirty}
-                saving={saving}
-                onSave={onSave}
-                onDiscard={discard}
-                note={badColour ? <span className="text-red-600">Enter colours as a 6-digit hex code (#rrggbb)</span> : undefined}
-            />
-        </Card>
-    );
-}
-
-function ColorField({ label, description, value, fallback, onChange }: {
-    label: string; description: string; value: string; fallback: string; onChange: (v: string) => void;
-}) {
-    const custom = isHexColor(value);
-    const swatch = custom ? value : (isHexColor(fallback) ? fallback : '#000000');
-    return (
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 p-3">
-            <input
-                type="color"
-                aria-label={`${label} picker`}
-                value={swatch.toLowerCase()}
-                onChange={(e) => onChange(e.target.value)}
-                className="h-11 w-11 shrink-0 cursor-pointer rounded-lg border border-gray-200 bg-white p-0.5"
-            />
-            <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-gray-800">{label}</p>
-                    {!custom && <Badge tone="gray">Default</Badge>}
+            <div className="mt-5">
+                <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Logo size</span>
+                    <span className="text-sm tabular-nums text-gray-500">{height}px tall</span>
                 </div>
-                <p className="truncate text-xs text-gray-400">{description}</p>
+                <input
+                    type="range" min={LOGO_MIN} max={LOGO_MAX} step={1} value={height}
+                    onChange={(e) => set('logoHeight', e.target.value)}
+                    className="w-full accent-[var(--color-primary)]"
+                    aria-label="Logo size"
+                />
+                <div className="mt-1 flex justify-between text-xs text-gray-400"><span>Smaller</span><span>Bigger</span></div>
             </div>
-            <input
-                type="text"
-                aria-label={`${label} hex code`}
-                value={value.startsWith('#') ? value : ''}
-                placeholder={isHexColor(fallback) ? fallback : '#rrggbb'}
-                maxLength={7}
-                spellCheck={false}
-                onChange={(e) => onChange(e.target.value.trim())}
-                className={cx(INPUT, 'h-9 w-24 shrink-0 px-2.5 font-mono text-xs', value && value.startsWith('#') && !custom && 'border-red-300')}
-            />
-        </div>
+
+            {/* How the header will look */}
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <p className="mb-3 text-xs font-medium uppercase tracking-wider text-gray-400">Header preview</p>
+                <div className="flex h-24 items-center rounded-lg bg-white px-4">
+                    {uploaded
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={values.logoUrl} alt="Logo preview" style={{ height, width: 'auto', maxWidth: 260 }} className="object-contain" />
+                        : <Logo size={height} />}
+                </div>
+            </div>
+
+            <SaveRow canSave={dirty} dirty={dirty} saving={saving} onSave={onSave} onDiscard={discard} />
+        </Card>
     );
 }
 

@@ -29,7 +29,7 @@ export default function SettingsPage() {
                     <BusinessSettings />
                 </SettingsSection>
 
-                <SettingsSection id="store" title="Store" description="How your storefront looks and appears in search.">
+                <SettingsSection id="store" title="Store" description="Your logo and store details.">
                     <StoreSettings />
                 </SettingsSection>
 

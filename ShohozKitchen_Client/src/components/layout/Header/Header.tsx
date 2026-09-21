@@ -15,6 +15,7 @@ import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
 import { logout } from '@/redux/slices/authSlice';
 import Logo from '@/components/shared/Logo';
+import { useTheme } from '@/components/shared/ThemeProvider';
 import SearchAutocomplete from '@/components/shared/SearchAutocomplete';
 import { useWishlist } from '@/hooks/useWishlist';
 import { telHref } from '@/utils/contactLinks';
@@ -513,10 +514,17 @@ const Header: React.FC = () => {
     );
 };
 
+// The logo and its height come from Settings → Store. With no logo uploaded, the
+// built-in one is drawn at that height instead.
 function HeaderLogo() {
+    const { logoUrl, logoHeight } = useTheme();
+    const uploaded = logoUrl && logoUrl !== '/logo.svg';
     return (
         <div className="group select-none transition-transform duration-300 group-hover:scale-105" aria-label="Shohoz Kitchen">
-            <Logo size={42} />
+            {uploaded
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={logoUrl} alt="Shohoz Kitchen" style={{ height: logoHeight, width: 'auto', maxWidth: 260 }} className="block object-contain" />
+                : <Logo size={logoHeight} />}
         </div>
     );
 }

@@ -132,6 +132,7 @@ const siteContentSchema = new Schema({
         primaryColor: { type: String, default: '#f15a24' },
         secondaryColor: { type: String, default: '#f4784b' },
         logoUrl: { type: String, default: '/logo.svg' },
+        logoHeight: { type: Number, default: 42, min: 24, max: 80 },   // header logo height, px
         faviconUrl: { type: String, default: '' },
     },
 

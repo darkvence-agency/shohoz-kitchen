@@ -8,6 +8,8 @@ interface ThemeContextType {
     secondaryColor: string;
     logoUrl: string;
     faviconUrl: string;
+    /** Header logo height in px (Settings → Store). */
+    logoHeight: number;
     isLoaded: boolean;
 }
 
@@ -18,6 +20,7 @@ const defaultTheme: ThemeContextType = {
     secondaryColor: '#f4784b',
     logoUrl: DEFAULT_LOGO,
     faviconUrl: '',
+    logoHeight: 42,
     isLoaded: false,
 };
 
@@ -113,6 +116,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             secondaryColor: secondary,
             logoUrl: t.logoUrl || DEFAULT_LOGO,
             faviconUrl: t.faviconUrl || '',
+            logoHeight: Number(t.logoHeight) > 0 ? Number(t.logoHeight) : 42,
             isLoaded: true,
         });
     }, [res]);
