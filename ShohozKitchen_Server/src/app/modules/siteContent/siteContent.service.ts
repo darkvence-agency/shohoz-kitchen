@@ -1,11 +1,12 @@
 import { SiteContent } from './siteContent.model';
 
 /**
- * SEO and marketing belong to the super admin and have their own validated routes.
- * The general update is open to every admin and checks nothing, so it must never
- * reach them — neither as a whole group nor through a dotted path like "marketing.gtmId".
+ * SEO, marketing and the checkout payment accounts belong to the super admin and have
+ * their own validated routes. The general update is open to every admin and checks
+ * nothing, so it must never reach them — neither as a whole group nor through a dotted
+ * path like "marketing.gtmId" (an admin must not be able to swap the bKash number).
  */
-const SUPERADMIN_SECTIONS = ['marketing', 'seo'];
+const SUPERADMIN_SECTIONS = ['marketing', 'seo', 'payment'];
 const withoutSuperadminSections = (data: Record<string, unknown>) => {
     const clean: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data || {})) {
@@ -132,9 +133,10 @@ const SiteContentService = {
                 {
                     $set: {
                         payment: {
-                            bkash:  { number: '', accountType: 'Personal', active: true },
-                            rocket: { number: '', accountType: 'Personal', active: true },
-                            nagad:  { number: '', accountType: 'Personal', active: true },
+                            bkash:  { number: '', accountType: 'Personal', active: false },
+                            rocket: { number: '', accountType: 'Personal', active: false },
+                            nagad:  { number: '', accountType: 'Personal', active: false },
+                            bank:   { bankName: '', accountName: '', accountNumber: '', branch: '', routingNumber: '', active: false },
                             instructions: 'Send Money to the number above, then submit your number, transaction ID and payment time below.',
                         },
                     },
@@ -164,6 +166,21 @@ const SiteContentService = {
 
     async updateSeo(data: Record<string, string>) {
         return this._setGroup('seo', data);
+    },
+
+    // Checkout payment accounts. Super admin only, validated by siteContent.validation.ts;
+    // only the fields sent are changed ({ bkash: { number } } → "payment.bkash.number").
+    async updatePayment(data: Record<string, unknown>) {
+        const set: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(data)) {
+            if (v === undefined) continue;
+            if (v && typeof v === 'object') {
+                for (const [f, fv] of Object.entries(v)) if (fv !== undefined) set[`payment.${k}.${f}`] = fv;
+            } else {
+                set[`payment.${k}`] = v;
+            }
+        }
+        return SiteContent.findOneAndUpdate({ _key: 'main' }, { $set: set }, { new: true, upsert: true, runValidators: true });
     },
 
     async _setGroup(group: 'marketing' | 'seo', data: Record<string, string>) {

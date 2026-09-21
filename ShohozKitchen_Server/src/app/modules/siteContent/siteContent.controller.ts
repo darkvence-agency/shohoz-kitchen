@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import SiteContentService from './siteContent.service';
-import { updateMarketingValidation, updateSeoValidation } from './siteContent.validation';
+import { updateMarketingValidation, updatePaymentValidation, updateSeoValidation } from './siteContent.validation';
 
 const SiteContentController = {
     // GET /api/site-content — Public
@@ -31,6 +31,13 @@ const SiteContentController = {
         const data = updateSeoValidation.shape.body.parse(req.body) as Record<string, string>;
         const content = await SiteContentService.updateSeo(data);
         sendResponse(res, { statusCode: 200, success: true, message: 'SEO settings saved', data: content?.seo });
+    }),
+
+    // PUT /api/site-content/payment — Super admin only
+    updatePayment: catchAsync(async (req: Request, res: Response) => {
+        const data = updatePaymentValidation.shape.body.parse(req.body) as Record<string, unknown>;
+        const content = await SiteContentService.updatePayment(data);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Payment methods saved', data: content?.payment });
     }),
 
     // PATCH /api/site-content/:section — Admin only (section update)

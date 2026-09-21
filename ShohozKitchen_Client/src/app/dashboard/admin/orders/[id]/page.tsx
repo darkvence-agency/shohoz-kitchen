@@ -438,7 +438,7 @@ export default function OrderDetailsPage() {
                             {order.paymentDetails?.senderNumber && (
                                 <div className="flex justify-between items-center text-sm border-b border-gray-50 pb-3">
                                     <span className="text-gray-500 flex items-center gap-1.5">
-                                        <FiPhone size={13} /> Sender Number:
+                                        <FiPhone size={13} /> {order.paymentMethod === 'bank' ? 'Paid from:' : 'Sender Number:'}
                                     </span>
                                     <span className="font-medium font-mono text-gray-800">{order.paymentDetails.senderNumber}</span>
                                 </div>

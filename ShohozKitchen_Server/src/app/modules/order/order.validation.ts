@@ -16,17 +16,18 @@ const shippingAddressValidation = z.object({
     postalCode: z.string().optional(),
 });
 
+// A manual (bKash / Nagad / bank) payment: where the money came from, its reference and when.
 const paymentDetailsValidation = z.object({
-    senderNumber: z.string().optional(),
-    transactionId: z.string().optional(),
-    paymentTime: z.string().optional(),
+    senderNumber: z.string().max(80, 'Sender number / account is too long').optional(),
+    transactionId: z.string().max(80, 'Transaction ID is too long').optional(),
+    paymentTime: z.string().max(40, 'Payment time is too long').optional(),
 }).optional();
 
 export const createOrderValidation = z.object({
     body: z.object({
         items: z.array(orderItemValidation).min(1, 'At least one item required'),
         shippingAddress: shippingAddressValidation,
-        paymentMethod: z.enum(['cod', 'bkash', 'rocket', 'nagad', 'sslcommerz']).default('bkash'),
+        paymentMethod: z.enum(['cod', 'bkash', 'rocket', 'nagad', 'bank', 'sslcommerz']).default('cod'),
         paymentDetails: paymentDetailsValidation,
         couponCode: z.string().optional(),
         note: z.string().optional(),

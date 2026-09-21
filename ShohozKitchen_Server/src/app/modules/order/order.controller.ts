@@ -2,6 +2,35 @@ import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import OrderService from './order.service';
+import SiteContentService from '../siteContent/siteContent.service';
+import AppError from '../../utils/AppError';
+
+const MANUAL_METHODS = ['bkash', 'nagad', 'bank'];
+
+/**
+ * What a customer may pay with at checkout: cash on delivery always; bKash, Nagad and
+ * bank transfer only while the super admin has them switched on with an account set
+ * (Settings → Payment methods). A manual payment also needs where it was sent from,
+ * the transaction ID and the time, which staff check before marking the order paid.
+ * Orders staff create from the dashboard skip this.
+ */
+const checkCheckoutPayment = async (body: { paymentMethod?: string; paymentDetails?: Record<string, string> }) => {
+    const method = body.paymentMethod || 'cod';
+    if (method === 'cod') return;
+
+    const unavailable = new AppError(400, 'This payment method is not available right now. Please choose another one.');
+    if (!MANUAL_METHODS.includes(method)) throw unavailable;
+
+    const content = await SiteContentService.get();
+    const cfg = (content as unknown as { payment?: Record<string, Record<string, unknown>> } | null)?.payment?.[method];
+    const account = method === 'bank' ? cfg?.accountNumber : cfg?.number;
+    if (cfg?.active !== true || !String(account || '').trim()) throw unavailable;
+
+    const d = body.paymentDetails || {};
+    if (!d.senderNumber?.trim() || !d.transactionId?.trim() || !d.paymentTime?.trim()) {
+        throw new AppError(400, 'Enter where you paid from, the transaction ID and the payment time.');
+    }
+};
 
 const OrderController = {
     getAll: catchAsync(async (req: Request, res: Response) => {
@@ -22,6 +51,7 @@ const OrderController = {
     }),
 
     create: catchAsync(async (req: Request, res: Response) => {
+        await checkCheckoutPayment(req.body);
         const order = await OrderService.createOrder(req.user!.userId, req.body);
         sendResponse(res, { statusCode: 201, success: true, message: 'Order placed successfully', data: order });
     }),
@@ -69,6 +99,7 @@ const OrderController = {
     }),
 
     guestCheckout: catchAsync(async (req: Request, res: Response) => {
+        await checkCheckoutPayment(req.body);
         const result = await OrderService.createGuestOrder(req.body);
         const message = result.isNewUser
             ? 'Order placed successfully! An account has been created and you are now logged in. Use "Forgot password" to set a login password for next time.'

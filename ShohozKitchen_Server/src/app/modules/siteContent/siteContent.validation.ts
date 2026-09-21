@@ -56,3 +56,45 @@ export const updateSeoValidation = z.object({
         })
         .strict(),
 });
+
+// ── Checkout payment accounts (Settings → Payment methods) ──
+// Switching a method on needs its account set, so checkout never shows an empty number.
+const MOBILE_NUMBER = /^01\d{9}$/;
+const text = (max: number, label: string) => z.string().trim().max(max, `${label} is too long`).optional();
+
+const mobileAccount = (label: string) =>
+    z
+        .object({
+            number: z
+                .preprocess((v) => (typeof v === 'string' ? v.replace(/[\s-]/g, '') : v), z.union([z.literal(''), z.string().regex(MOBILE_NUMBER, `Enter the ${label} number as 01XXXXXXXXX`)]))
+                .optional(),
+            accountType: z.enum(['Personal', 'Agent', 'Merchant']).optional(),
+            active: z.boolean().optional(),
+        })
+        .strict()
+        .refine((m) => !(m.active && !m.number), { message: `Add the ${label} number before showing it at checkout`, path: ['number'] });
+
+export const updatePaymentValidation = z.object({
+    body: z
+        .object({
+            bkash: mobileAccount('bKash').optional(),
+            nagad: mobileAccount('Nagad').optional(),
+            bank: z
+                .object({
+                    bankName: text(80, 'Bank name'),
+                    accountName: text(80, 'Account name'),
+                    accountNumber: text(40, 'Account number'),
+                    branch: text(80, 'Branch'),
+                    routingNumber: text(20, 'Routing number'),
+                    active: z.boolean().optional(),
+                })
+                .strict()
+                .refine((b) => !(b.active && (!b.bankName || !b.accountName || !b.accountNumber)), {
+                    message: 'Add the bank name, account name and account number before showing it at checkout',
+                    path: ['accountNumber'],
+                })
+                .optional(),
+            instructions: text(300, 'The instructions'),
+        })
+        .strict(),
+});

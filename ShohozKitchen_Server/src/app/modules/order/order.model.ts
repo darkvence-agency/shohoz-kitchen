@@ -82,8 +82,8 @@ const orderSchema = new Schema(
         cancelReason: { type: String, default: '' },
         paymentMethod: {
             type: String,
-            enum: ['cod', 'bkash', 'rocket', 'nagad', 'sslcommerz'],
-            default: 'bkash',
+            enum: ['cod', 'bkash', 'rocket', 'nagad', 'bank', 'sslcommerz'],
+            default: 'cod',
         },
         paymentStatus: {
             type: String,

@@ -40,6 +40,12 @@ export const siteContentApi = baseApi.injectEndpoints({
             invalidatesTags: ['SiteContent'],
         }),
 
+        // Super admin: bKash / Nagad / bank accounts offered at checkout
+        updatePaymentSettings: builder.mutation({
+            query: (data: Record<string, unknown>) => ({ url: '/site-content/payment', method: 'PUT', body: data }),
+            invalidatesTags: ['SiteContent'],
+        }),
+
         // Public: get single legal page by slug
         getLegalPage: builder.query({
             query: (slug: string) => `/site-content/legal/${slug}`,
@@ -70,6 +76,7 @@ export const {
     useUpdateSiteSectionMutation,
     useUpdateMarketingMutation,
     useUpdateSeoMutation,
+    useUpdatePaymentSettingsMutation,
     useGetLegalPageQuery,
     useGetAllLegalPagesQuery,
     useUpdateLegalPageMutation,

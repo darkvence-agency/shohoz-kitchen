@@ -7,7 +7,7 @@ import { toast } from 'react-hot-toast';
 import dynamic from 'next/dynamic';
 import {
     FiPhone, FiMessageCircle, FiLayout, FiFileText, FiImage,
-    FiSave, FiPlus, FiTrash2, FiCheckCircle, FiArrowUp, FiArrowDown, FiCreditCard,
+    FiSave, FiPlus, FiTrash2, FiCheckCircle, FiArrowUp, FiArrowDown,
 } from 'react-icons/fi';
 import { SingleImageUploader } from '@/components/ui/ImageUploader';
 import { telHref, whatsappHref, messengerHref, messengerId } from '@/utils/contactLinks';
@@ -28,7 +28,6 @@ const btnSmall: React.CSSProperties = { ...btn, background: '#f3f4f6', color: '#
 const TABS = [
     { key: 'hero', label: '🖼️ Hero Slides', icon: FiImage },
     { key: 'contact', label: 'Contact Page', icon: FiPhone },
-    { key: 'payment', label: 'Payment Numbers', icon: FiCreditCard },
     { key: 'floating', label: 'Floating Widget', icon: FiMessageCircle },
     { key: 'footer', label: 'Footer', icon: FiLayout },
     { key: 'legal', label: 'Legal Pages', icon: FiFileText },
@@ -123,7 +122,6 @@ export default function SiteContentPage() {
             {/* Tab Content */}
             {activeTab === 'hero' && <HeroSlidesTab data={formData} setData={setFormData} onSave={handleSave} isSaving={isSaving} />}
             {activeTab === 'contact' && <ContactTab data={formData} setData={setFormData} />}
-            {activeTab === 'payment' && <PaymentTab data={formData} setData={setFormData} />}
             {activeTab === 'floating' && <FloatingTab data={formData} setData={setFormData} />}
             {activeTab === 'footer' && <FooterTab data={formData} setData={setFormData} />}
             {activeTab === 'legal' && <LegalPagesTab />}
@@ -439,107 +437,6 @@ function FloatingTab({ data, setData }: { data: any; setData: any }) {
                     </div>
                 );
             })}
-        </div>
-    );
-}
-
-/* ─── PAYMENT TAB ─── */
-function PaymentTab({ data, setData }: { data: any; setData: any }) {
-    const methods = [
-        { key: 'bkash', label: 'bKash', color: '#E2136E' },
-        { key: 'rocket', label: 'Rocket', color: '#8332AC' },
-        { key: 'nagad', label: 'Nagad', color: '#F47920' },
-        { key: 'cod', label: 'Cash on Delivery', color: '#16a34a' },
-    ];
-
-    const p = data.payment || {};
-    const updateMethod = (method: string, field: string, value: any) => {
-        setData((prev: any) => ({
-            ...prev,
-            payment: {
-                ...prev.payment,
-                [method]: { ...(prev.payment?.[method] || {}), [field]: value },
-            },
-        }));
-    };
-    const updateInstructions = (value: string) => {
-        setData((prev: any) => ({ ...prev, payment: { ...prev.payment, instructions: value } }));
-    };
-
-    return (
-        <div>
-            {/* Info */}
-            <div style={{ ...card, background: 'var(--color-primary-lightest)', borderColor: '#bbf7d0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FiCheckCircle size={16} color="#16a34a" />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#16a34a' }}>
-                        These numbers appear on the <strong>Checkout</strong> page. Customers send money to the active number.
-                    </span>
-                </div>
-            </div>
-
-            {/* Method cards */}
-            {methods.map(m => {
-                const md = p[m.key] || {};
-                const isCOD = m.key === 'cod';
-                return (
-                    <div key={m.key} style={{ ...card, borderLeft: `3px solid ${m.color}` }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCOD ? 0 : '14px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: m.color }} />
-                                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: m.color }}>{m.label}</h3>
-                                {isCOD && <span style={{ fontSize: '11px', color: '#888', fontWeight: 400 }}>— no payment number needed</span>}
-                            </div>
-                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: '#555', cursor: 'pointer' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={md.active !== false}
-                                    onChange={e => updateMethod(m.key, 'active', e.target.checked)}
-                                    style={{ width: '15px', height: '15px', accentColor: m.color, cursor: 'pointer' }}
-                                />
-                                {md.active !== false ? 'Active' : 'Hidden'}
-                            </label>
-                        </div>
-                        {!isCOD && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-                                <div>
-                                    <label style={label}>{m.label} Number</label>
-                                    <input
-                                        value={md.number || ''}
-                                        onChange={e => updateMethod(m.key, 'number', e.target.value)}
-                                        placeholder="01XXXXXXXXX"
-                                        style={input}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={label}>Account Type</label>
-                                    <select
-                                        value={md.accountType || 'Personal'}
-                                        onChange={e => updateMethod(m.key, 'accountType', e.target.value)}
-                                        style={input}
-                                    >
-                                        <option value="Personal">Personal</option>
-                                        <option value="Agent">Agent</option>
-                                        <option value="Merchant">Merchant</option>
-                                    </select>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
-
-            {/* Instructions */}
-            <div style={card}>
-                <label style={label}>Payment Instructions (shown to customer)</label>
-                <textarea
-                    value={p.instructions || ''}
-                    onChange={e => updateInstructions(e.target.value)}
-                    placeholder="e.g. Send Money to the number above, then submit your number, transaction ID and time."
-                    rows={2}
-                    style={{ ...input, resize: 'vertical' as const, fontFamily: 'inherit' }}
-                />
-            </div>
         </div>
     );
 }

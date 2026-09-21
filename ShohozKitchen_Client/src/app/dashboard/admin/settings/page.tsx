@@ -1,18 +1,24 @@
 "use client";
 
 import React from 'react';
+import { useSelector } from 'react-redux';
+import type { RootState } from '@/redux/store';
 import { PageHeader } from '@/components/admin/ui';
 import { SettingsSection } from './parts';
 import BusinessSettings from './BusinessSettings';
 import StoreSettings from './StoreSettings';
 import AccountSettings from './AccountSettings';
+import PaymentSettings from './PaymentSettings';
 
 /**
  * Settings — business numbers first (courier COD charge, delivery charge), then the
- * store's brand / identity / SEO, then the signed-in admin's own account.
+ * payment methods offered at checkout (super admin only), then the store's brand /
+ * identity / SEO, then the signed-in admin's own account.
  * Every card saves on its own, so changing one never re-saves another.
  */
 export default function SettingsPage() {
+    const isSuperadmin = useSelector((s: RootState) => s.auth.user?.role) === 'superadmin';
+
     return (
         <div className="max-w-5xl">
             <PageHeader
@@ -28,6 +34,16 @@ export default function SettingsPage() {
                 >
                     <BusinessSettings />
                 </SettingsSection>
+
+                {isSuperadmin && (
+                    <SettingsSection
+                        id="payments"
+                        title="Payment methods"
+                        description="What customers can pay with at checkout. Only the super admin can change this."
+                    >
+                        <PaymentSettings />
+                    </SettingsSection>
+                )}
 
                 <SettingsSection id="store" title="Store" description="Your logo and store details.">
                     <StoreSettings />

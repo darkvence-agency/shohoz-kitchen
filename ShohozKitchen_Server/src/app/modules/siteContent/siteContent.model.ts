@@ -57,12 +57,23 @@ const siteContentSchema = new Schema({
         showMessenger: { type: Boolean, default: true },
     },
 
-    // ── Payment Methods (bKash / Rocket / Nagad mobile numbers + Cash on Delivery) ──
+    // ── Payment methods at checkout (super admin only: Settings → Payment methods) ──
+    // Cash on delivery is always offered. bKash, Nagad and bank transfer show only while
+    // `active` is on and an account is set; the customer pays manually and types where
+    // they paid from, the transaction ID and the time. Rocket and the COD toggle are no
+    // longer used (kept so older saved settings still load).
     payment: {
-        bkash:  { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: true } },
-        rocket: { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: true } },
-        nagad:  { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: true } },
-        // Cash on Delivery has no number/accountType — only a visibility toggle used by the checkout page.
+        bkash:  { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: false } },
+        rocket: { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: false } },
+        nagad:  { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: false } },
+        bank: {
+            bankName:      { type: String, default: '' },
+            accountName:   { type: String, default: '' },
+            accountNumber: { type: String, default: '' },
+            branch:        { type: String, default: '' },
+            routingNumber: { type: String, default: '' },
+            active:        { type: Boolean, default: false },
+        },
         cod:    { active: { type: Boolean, default: true } },
         instructions: { type: String, default: 'Send Money to the number above, then submit your number, transaction ID and payment time below.' },
     },

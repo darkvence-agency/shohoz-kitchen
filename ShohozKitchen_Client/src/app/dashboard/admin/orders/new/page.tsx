@@ -324,7 +324,7 @@ export default function NewOrderPage() {
                                     <option value="cod">Cash on delivery</option>
                                     <option value="bkash">bKash</option>
                                     <option value="nagad">Nagad</option>
-                                    <option value="rocket">Rocket</option>
+                                    <option value="bank">Bank transfer</option>
                                 </select>
                             </Field>
                             <Field label="Coupon code" hint="Applied only if it is valid for this customer.">

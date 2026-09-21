@@ -23,9 +23,19 @@ import { trackBeginCheckout, trackPurchase } from '@/lib/marketing';
 
 const COUPON_STORAGE_KEY = 'shohozkitchen_applied_coupon';
 
-// ─── Payment methods offered: bKash + SSLCommerz + Cash on Delivery ──────────
-// (bKash account number/instructions come dynamically from site settings)
+// ─── Payment methods offered ──────────────────────────────────────────────
+// Cash on Delivery always. bKash, Nagad and bank transfer only while the super admin
+// has them switched on with an account set (Settings → Payment methods); the customer
+// pays manually and tells us where from, the transaction ID and the time. SSLCommerz
+// is not offered for now (its gateway code stays in the payment module).
 const PAYMENT_META = [
+    {
+        id: 'cod',
+        label: 'Cash on Delivery',
+        sub: 'Pay in cash when your order arrives',
+        color: '#16a34a',
+        kind: 'cod' as const,
+    },
     {
         id: 'bkash',
         label: 'bKash',
@@ -34,20 +44,21 @@ const PAYMENT_META = [
         kind: 'mobile' as const,
     },
     {
-        id: 'sslcommerz',
-        label: 'Cards & Mobile Banking (SSLCommerz)',
-        sub: 'Visa, Mastercard, Nagad, Rocket & more',
-        color: '#1F6FEB',
-        kind: 'gateway' as const,
+        id: 'nagad',
+        label: 'Nagad',
+        sub: 'Send Money to our Nagad number',
+        color: '#F47920',
+        kind: 'mobile' as const,
     },
     {
-        id: 'cod',
-        label: 'Cash on Delivery',
-        sub: 'Pay in cash when your order arrives',
-        color: '#16a34a',
-        kind: 'cod' as const,
+        id: 'bank',
+        label: 'Bank Transfer',
+        sub: 'Transfer to our bank account',
+        color: '#0F766E',
+        kind: 'bank' as const,
     },
 ];
+const MANUAL_METHODS = ['bkash', 'nagad', 'bank'];
 
 const inputClass =
     "w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded text-sm text-gray-800 outline-none focus:border-[var(--color-primary)] transition-colors placeholder:text-gray-400";
@@ -83,9 +94,13 @@ const CheckoutPage = () => {
             ...m,
             number: m.kind === 'mobile' ? (paymentCfg[m.id]?.number || '') : '',
             accountType: m.kind === 'mobile' ? (paymentCfg[m.id]?.accountType || 'Personal') : '',
-            active: paymentCfg[m.id]?.active !== false,
+            active: m.kind === 'cod' || (
+                paymentCfg[m.id]?.active === true
+                && !!(m.kind === 'bank' ? paymentCfg.bank?.accountNumber : paymentCfg[m.id]?.number)
+            ),
         }))
         .filter(m => m.active);
+    const bank = paymentCfg.bank || {};
     const paymentInstructions = paymentCfg.instructions || '';
     const availableIds = methods.map(m => m.id).join(',');
 
@@ -93,7 +108,7 @@ const CheckoutPage = () => {
         fullName: '', email: '', phone: '', address: '', city: '', area: '', postalCode: '',
     });
 
-    const [selectedPayment, setSelectedPayment] = useState('bkash');
+    const [selectedPayment, setSelectedPayment] = useState('cod');
     const [paymentDetails, setPaymentDetails] = useState({
         senderNumber: '', transactionId: '', paymentTime: '',
     });
@@ -253,10 +268,10 @@ const CheckoutPage = () => {
         if (!formData.address.trim()) e.address = 'Address is required';
         if (!formData.city.trim()) e.city = 'City is required';
         if (!area) e.deliveryArea = 'Choose Inside Dhaka or Outside Dhaka';
-        // bKash requires the "send money" confirmation details. SSLCommerz redirects
-        // to the gateway (later phase) and COD is paid on delivery — neither needs them.
-        if (selectedPayment === 'bkash') {
-            if (!paymentDetails.senderNumber.trim()) e.senderNumber = 'Sender number is required';
+        // bKash / Nagad / bank transfer need the payment's details so staff can check
+        // it; COD is paid on delivery and needs none.
+        if (MANUAL_METHODS.includes(selectedPayment)) {
+            if (!paymentDetails.senderNumber.trim()) e.senderNumber = selectedPayment === 'bank' ? 'Enter the account you paid from' : 'Sender number is required';
             if (!paymentDetails.transactionId.trim()) e.transactionId = 'Transaction ID is required';
             if (!paymentDetails.paymentTime.trim()) e.paymentTime = 'Payment time is required';
         }
@@ -264,11 +279,13 @@ const CheckoutPage = () => {
     };
 
     const activeMethod = methods.find(m => m.id === selectedPayment) || methods[0]
-        || { ...PAYMENT_META[0], number: '', accountType: 'Personal', active: true };
+        || { ...PAYMENT_META[0], number: '', accountType: '', active: true };
+    // The account the customer pays to: the bKash / Nagad number, or the bank account number.
+    const payTo = activeMethod.kind === 'bank' ? (bank.accountNumber || '') : activeMethod.number;
 
     const copyNumber = () => {
-        if (!activeMethod?.number) return;
-        navigator.clipboard.writeText(activeMethod.number);
+        if (!payTo) return;
+        navigator.clipboard.writeText(payTo);
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
     };
@@ -331,8 +348,8 @@ const CheckoutPage = () => {
                 postalCode: formData.postalCode,
             },
             paymentMethod: selectedPayment,
-            // Only bKash carries the manual send-money confirmation details.
-            paymentDetails: selectedPayment === 'bkash' ? {
+            // Only manual payments (bKash / Nagad / bank) carry the payment's details.
+            paymentDetails: MANUAL_METHODS.includes(selectedPayment) ? {
                 senderNumber: paymentDetails.senderNumber,
                 transactionId: paymentDetails.transactionId,
                 paymentTime: paymentDetails.paymentTime,
@@ -343,10 +360,10 @@ const CheckoutPage = () => {
             ...(appliedCoupon ? { couponCode: appliedCoupon.code, discount: appliedCoupon.discount } : {}),
         };
 
-        // For online gateways (bKash / SSLCommerz) we hand the browser off to the
-        // gateway after the order is created. COD never touches the gateway and
-        // simply lands on the success page like before.
-        const isGatewayMethod = selectedPayment === 'bkash' || selectedPayment === 'sslcommerz';
+        // Only an online gateway (SSLCommerz, not offered for now) hands the browser off
+        // after the order is created. COD and the manual bKash / Nagad / bank payments
+        // land on the confirmation like before; staff check the payment afterwards.
+        const isGatewayMethod = selectedPayment === 'sslcommerz';
 
         // Initialise the gateway for the freshly-created order and redirect the
         // browser to whatever URL the backend returns (real gateway in prod, the
@@ -485,6 +502,7 @@ const CheckoutPage = () => {
                         Thank you for your purchase. Your order has been placed successfully
                         {orderRef && <> — <span className="font-semibold text-gray-700">{orderRef}</span></>}.
                         {selectedPayment === 'cod' && ' Pay in cash when it arrives.'}
+                        {MANUAL_METHODS.includes(selectedPayment) && ' We will confirm it once we have checked your payment.'}
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 mt-7">
                         <button
@@ -723,9 +741,9 @@ const CheckoutPage = () => {
                                                 >
                                                     {method.kind === 'cod'
                                                         ? <FiTruck size={16} />
-                                                        : method.kind === 'gateway'
+                                                        : method.kind === 'bank'
                                                             ? <FiCreditCard size={16} />
-                                                            : 'b'}
+                                                            : method.label[0]}
                                                 </span>
                                                 <span className="flex-1 min-w-0">
                                                     <span className="block text-sm font-medium text-gray-900 truncate">{method.label}</span>
@@ -750,35 +768,30 @@ const CheckoutPage = () => {
                                         </div>
                                     )}
 
-                                    {selectedPayment === 'sslcommerz' && (
-                                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-4 flex items-start gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                <FiCreditCard size={15} className="text-blue-600" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-semibold text-blue-800">Secure online payment</p>
-                                                <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
-                                                    You will be redirected to SSLCommerz to complete payment using your card, internet banking, or mobile wallet.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {selectedPayment === 'bkash' && (
+                                    {MANUAL_METHODS.includes(selectedPayment) && (
                                         <div className="pt-1">
-                                            {/* Merchant number */}
-                                            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 flex items-center justify-between">
-                                                <div>
-                                                    <p className="text-xs text-gray-500">
-                                                        Send Money ({activeMethod.accountType}) to this {activeMethod.label} number
-                                                    </p>
-                                                    {activeMethod.number ? (
+                                            {/* Where to pay: the bKash / Nagad number, or the bank account */}
+                                            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 flex items-center justify-between gap-3">
+                                                {activeMethod.kind === 'bank' ? (
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs text-gray-500">Transfer the total to this bank account</p>
+                                                        <p className="text-base font-semibold tracking-wide text-gray-900 mt-0.5 break-all">{bank.accountNumber}</p>
+                                                        <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                                                            {bank.accountName}
+                                                            {bank.bankName && <> · {bank.bankName}</>}
+                                                            {bank.branch && <> · {bank.branch} branch</>}
+                                                            {bank.routingNumber && <> · Routing {bank.routingNumber}</>}
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <p className="text-xs text-gray-500">
+                                                            Send Money ({activeMethod.accountType}) to this {activeMethod.label} number
+                                                        </p>
                                                         <p className="text-base font-semibold tracking-wide text-gray-900 mt-0.5">{activeMethod.number}</p>
-                                                    ) : (
-                                                        <p className="text-sm font-medium text-amber-600 mt-0.5">Number not set — please contact support</p>
-                                                    )}
-                                                </div>
-                                                {activeMethod.number && (
+                                                    </div>
+                                                )}
+                                                {payTo && (
                                                     <button
                                                         type="button"
                                                         onClick={copyNumber}
@@ -796,12 +809,21 @@ const CheckoutPage = () => {
                                             {/* Payment details form */}
                                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div className="md:col-span-2">
-                                                    <label className={labelClass}>Your {activeMethod.label} Number <span className="text-red-500">*</span></label>
-                                                    <input type="tel" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="Number you sent money from" className={cls('senderNumber')} />
+                                                    {activeMethod.kind === 'bank' ? (
+                                                        <>
+                                                            <label className={labelClass}>Paid From (your bank &amp; account number) <span className="text-red-500">*</span></label>
+                                                            <input type="text" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="e.g. City Bank, 1234567890" className={cls('senderNumber')} />
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <label className={labelClass}>Your {activeMethod.label} Number <span className="text-red-500">*</span></label>
+                                                            <input type="tel" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="Number you sent money from" className={cls('senderNumber')} />
+                                                        </>
+                                                    )}
                                                     <FieldError field="senderNumber" />
                                                 </div>
                                                 <div>
-                                                    <label className={labelClass}>Transaction ID <span className="text-red-500">*</span></label>
+                                                    <label className={labelClass}>{activeMethod.kind === 'bank' ? 'Transaction / Reference ID' : 'Transaction ID'} <span className="text-red-500">*</span></label>
                                                     <input type="text" name="transactionId" value={paymentDetails.transactionId} onChange={handlePaymentDetailChange} placeholder="e.g. 9A1B2C3D4E" className={cls('transactionId')} />
                                                     <FieldError field="transactionId" />
                                                 </div>

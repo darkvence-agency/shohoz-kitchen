@@ -153,6 +153,8 @@ export function paymentMethodLabel(method: string): string {
             return 'Rocket';
         case 'nagad':
             return 'Nagad';
+        case 'bank':
+            return 'Bank transfer';
         default:
             return (method || '').toUpperCase();
     }
@@ -169,6 +171,7 @@ export const paymentMethodBadge: Record<string, PaymentMethodBadge> = {
     cod: { bg: '#eefcf3', color: '#0f9d58' },
     rocket: { bg: '#f3eefb', color: '#8c3ec0' },
     nagad: { bg: '#fdeeee', color: '#ed1c24' },
+    bank: { bg: '#ecfdf5', color: '#0f766e' },
 };
 
 // ===== Carriers for tracking dropdowns =====
