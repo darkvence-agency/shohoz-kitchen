@@ -40,26 +40,31 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
         'Can block users but cannot delete them',
     ],
     editor: [
+        'Own dashboard: orders waiting, and their own confirmations and rank',
         'Orders: open, confirm and update status, add notes, print labels and invoices',
         'Products: add and update (cannot delete)',
         'Fraud check',
-        'Nothing else — no dashboard money, customers or settings',
+        'Nothing else — no shop money, customers or settings',
     ],
 };
 
 /** Pages only the super admin opens (money and dealers, staff and roles). */
 const SUPERADMIN_ONLY = ['/accounts', '/expenses', '/investors', '/courier-payouts', '/suppliers', '/purchases', '/staff', '/roles'];
 
-/** Everything an editor may open (and nothing else). */
-const EDITOR_PAGES = ['/orders', '/products', '/fraud-check', '/profile', '/notifications'];
+/**
+ * Everything an editor may open (and nothing else). '/' is the Dashboard itself,
+ * which shows editors their own page (EditorDashboard) and matches only exactly.
+ */
+const EDITOR_PAGES = ['/', '/orders', '/products', '/fraud-check', '/profile', '/notifications'];
 /** …except these, inside the editor pages: creating orders, bulk moderation. */
 const EDITOR_BLOCKED = ['/orders/new', '/products/moderation'];
 
 /** Works in the admin panel (as opposed to a shopper). */
 export const isStaffRole = (role?: string): boolean => role === 'superadmin' || role === 'admin' || role === 'editor';
 
-/** Where each role lands in the admin panel. */
-export const homeFor = (role?: string): string => (role === 'editor' ? `${ADMIN_ROOT}/orders` : ADMIN_ROOT);
+/** Where each role lands in the admin panel: the Dashboard, which differs by role. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const homeFor = (_role?: string): string => ADMIN_ROOT;
 
 const under = (path: string, prefixes: string[]) =>
     prefixes.some((p) => path === p || path.startsWith(`${p}/`));

@@ -162,6 +162,17 @@ export interface StaffHistoryRow {
     total: number;
 }
 
+/** The signed-in staff member's own dashboard. */
+export interface MyActivity {
+    from: string;
+    to: string;
+    me: { confirmed: number; delivered: number; cancelled: number; other: number; total: number; confirmedValue: number };
+    rank: number | null;
+    staffCount: number;
+    recent: StaffHistoryRow[];
+    queue: { toConfirm: number; toShip: number; onTheWay: number };
+}
+
 export interface StaffHistoryArgs extends ReportPeriod {
     actor?: string;
     status?: OrderStatus | '';
@@ -209,6 +220,12 @@ export const analyticsApi = baseApi.injectEndpoints({
             providesTags: ['Analytics', 'Orders'],
         }),
 
+        /** The signed-in staff member's own numbers (editors can call this). */
+        getMyActivity: builder.query<ApiResponse<MyActivity>, ReportPeriod>({
+            query: ({ from, to }) => ({ url: '/analytics/my-activity', params: { from, to } }),
+            providesTags: ['Analytics', 'Orders'],
+        }),
+
         /** The raw change log behind the leaderboard, newest first. */
         getStaffHistory: builder.query<PagedResponse<StaffHistoryRow[]>, StaffHistoryArgs>({
             query: ({ from, to, actor, status, page, limit }) => ({
@@ -229,4 +246,5 @@ export const {
     useGetReturnsSummaryQuery,
     useGetStaffActivityQuery,
     useGetStaffHistoryQuery,
+    useGetMyActivityQuery,
 } = analyticsApi;

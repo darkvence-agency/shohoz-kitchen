@@ -14,6 +14,11 @@ import {
 
 const router = express.Router();
 
+// ── The signed-in staff member's own numbers — editors too ──
+// Declared before the admin gate below on purpose: a route that answers here never
+// reaches it. It only ever returns the caller's own rows.
+router.get('/my-activity', authMiddleware, authorizeRoles('admin', 'editor'), validateRequest(staffActivityValidation), AnalyticsController.getMyActivity);
+
 // ════════════════════════════════════════════════════════════
 //  ADMIN ANALYTICS — everything below requires admin auth.
 // ════════════════════════════════════════════════════════════

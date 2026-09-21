@@ -10,6 +10,7 @@
  */
 import { PipelineStage, Types } from 'mongoose';
 import { ActivityLog } from '../activityLog/activityLog.model';
+import { Order } from '../order/order.model';
 import { User } from '../user/user.model';
 import { Period, REPORT_TZ } from './analytics.period';
 
@@ -212,5 +213,62 @@ const getStaffHistory = async (
     return { rows, meta: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } };
 };
 
-export const StaffAnalytics = { getStaffActivity, getStaffHistory };
+/** Order statuses grouped the way the order desk works through them. */
+const QUEUE = {
+    toConfirm: ['pending'],
+    toShip: ['confirmed', 'processing'],
+    onTheWay: ['shipped', 'on_the_way', 'out_for_delivery', 'delivery_attempt'],
+} as const;
+
+export interface MyActivity {
+    from: string;
+    to: string;
+    /** This person's tally for the period — all zeros when they did nothing yet. */
+    me: Omit<StaffRow, 'actor' | 'name' | 'email' | 'role'>;
+    /** Place on the confirmations leaderboard, or null with no confirmations. */
+    rank: number | null;
+    /** How many staff moved at least one order in the period. */
+    staffCount: number;
+    recent: StaffHistoryRow[];
+    /** Shop-wide orders waiting at each stage right now (not tied to the period). */
+    queue: { toConfirm: number; toShip: number; onTheWay: number };
+}
+
+/**
+ * One staff member's own view: what they did in the period, where that puts them,
+ * and what is waiting on the desk. Only the caller's own rows are returned — the
+ * rank is a number, never other people's names.
+ */
+const getMyActivity = async (p: Period, actorId: string): Promise<MyActivity> => {
+    const [board, history, toConfirm, toShip, onTheWay] = await Promise.all([
+        getStaffActivity(p),
+        getStaffHistory(p, { actor: actorId, limit: 8 }),
+        Order.countDocuments({ status: { $in: [...QUEUE.toConfirm] } }),
+        Order.countDocuments({ status: { $in: [...QUEUE.toShip] } }),
+        Order.countDocuments({ status: { $in: [...QUEUE.onTheWay] } }),
+    ]);
+
+    const idx = board.rows.findIndex((r) => r.actor === String(actorId));
+    const mine = idx >= 0 ? board.rows[idx] : null;
+
+    return {
+        from: p.from,
+        to: p.to,
+        me: {
+            confirmed: mine?.confirmed || 0,
+            delivered: mine?.delivered || 0,
+            cancelled: mine?.cancelled || 0,
+            other: mine?.other || 0,
+            total: mine?.total || 0,
+            confirmedValue: mine?.confirmedValue || 0,
+        },
+        // The board is sorted by confirmations; nobody is "ranked" for zero of them.
+        rank: mine && mine.confirmed > 0 ? idx + 1 : null,
+        staffCount: board.rows.length,
+        recent: history.rows,
+        queue: { toConfirm, toShip, onTheWay },
+    };
+};
+
+export const StaffAnalytics = { getStaffActivity, getStaffHistory, getMyActivity };
 export default StaffAnalytics;

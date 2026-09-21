@@ -211,6 +211,13 @@ const AnalyticsController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Staff order activity fetched', data });
     }),
 
+    // GET /analytics/my-activity[?from&to] — the signed-in staff member's own numbers
+    getMyActivity: catchAsync(async (req: Request, res: Response) => {
+        const period = resolvePeriod(req.query.from, req.query.to);
+        const data = await StaffAnalytics.getMyActivity(period, String(req.user?.userId));
+        sendResponse(res, { statusCode: 200, success: true, message: 'Your activity fetched', data });
+    }),
+
     // GET /analytics/staff-orders/history[?from&to&actor&status&page&limit] — the raw change log
     getStaffHistory: catchAsync(async (req: Request, res: Response) => {
         const period = resolvePeriod(req.query.from, req.query.to);
