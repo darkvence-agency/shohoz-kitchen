@@ -14,6 +14,7 @@ import {
     FiMapPin, FiTruck, FiDollarSign, FiRefreshCw, FiShield, FiClock
 } from 'react-icons/fi';
 import { useGetProductBySlugQuery, useGetRelatedProductsQuery, useIncrementProductStatMutation } from '@/redux/api/productApi';
+import { trackViewItem } from '@/lib/marketing';
 import { useGetProductReviewsQuery, useCreateReviewMutation, useCanReviewQuery } from '@/redux/api/reviewApi';
 import { useGetShippingSettingsQuery } from '@/redux/api/shippingApi';
 import { useAppDispatch, useAppSelector } from '@/redux';
@@ -98,6 +99,18 @@ export default function ProductDetailsPage() {
         { skip: !product?._id || !product?.category?._id }
     );
     const relatedProducts = relatedData?.data || [];
+
+    // ViewContent / view_item — once per product opened, for the ad trackers.
+    useEffect(() => {
+        if (!product?._id) return;
+        trackViewItem({
+            id: product._id,
+            name: product.name,
+            price: Number(product.price) || 0,
+            category: product.category?.name || undefined,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [product?._id]);
 
     // Delivery charges shown in the Delivery Options box (Admin → Settings → Business).
     const { data: shipSettings } = useGetShippingSettingsQuery();

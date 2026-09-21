@@ -88,12 +88,25 @@ const siteContentSchema = new Schema({
     },
 
     // ── SEO / Meta ──
+    // Super admin only (PUT /site-content/seo). The storefront's <title>, description
+    // and keywords come from here.
     seo: {
         title: { type: String, default: 'Shohoz Kitchen - Your trusted online marketplace' },
         description: { type: String, default: 'Shop the latest products with amazing deals at Shohoz Kitchen.' },
         keywords: { type: String, default: 'shohoz kitchen, shohozkitchen, ecommerce, online shopping' },
-        googleAnalyticsId: { type: String, default: '' },   // GA4 measurement ID (G-XXXXXXXXXX)
-        facebookPixel: { type: String, default: '' },       // Facebook Pixel ID
+    },
+
+    // ── Digital marketing — super admin only (PUT /site-content/marketing) ──
+    // Every value here ends up inside a <script> or <meta> tag on the storefront, so it
+    // is only ever an ID in a fixed shape (siteContent.validation.ts), never free text.
+    marketing: {
+        gtmId: { type: String, default: '' },                    // GTM-XXXXXXX
+        ga4Id: { type: String, default: '' },                    // G-XXXXXXXXXX
+        metaPixelId: { type: String, default: '' },              // digits
+        tiktokPixelId: { type: String, default: '' },            // C1234567890ABCDEFGHI
+        googleVerification: { type: String, default: '' },       // google-site-verification content
+        bingVerification: { type: String, default: '' },         // msvalidate.01 content
+        metaDomainVerification: { type: String, default: '' },   // facebook-domain-verification content
     },
 
     // ── Announcement Bar ──

@@ -1,5 +1,20 @@
 import { SiteContent } from './siteContent.model';
 
+/**
+ * SEO and marketing belong to the super admin and have their own validated routes.
+ * The general update is open to every admin and checks nothing, so it must never
+ * reach them — neither as a whole group nor through a dotted path like "marketing.gtmId".
+ */
+const SUPERADMIN_SECTIONS = ['marketing', 'seo'];
+const withoutSuperadminSections = (data: Record<string, unknown>) => {
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data || {})) {
+        if (SUPERADMIN_SECTIONS.includes(k.split('.')[0])) continue;
+        clean[k] = v;
+    }
+    return clean;
+};
+
 const SiteContentService = {
     // Get site content (creates default if not exists)
     async get() {
@@ -135,10 +150,26 @@ const SiteContentService = {
     async update(data: any) {
         const content = await SiteContent.findOneAndUpdate(
             { _key: 'main' },
-            { $set: data },
+            { $set: withoutSuperadminSections(data) },
             { new: true, upsert: true, runValidators: true }
         );
         return content;
+    },
+
+    // Digital marketing IDs and SEO text. Super admin only, validated by
+    // siteContent.validation.ts; only the fields sent are changed.
+    async updateMarketing(data: Record<string, string>) {
+        return this._setGroup('marketing', data);
+    },
+
+    async updateSeo(data: Record<string, string>) {
+        return this._setGroup('seo', data);
+    },
+
+    async _setGroup(group: 'marketing' | 'seo', data: Record<string, string>) {
+        const set: Record<string, string> = {};
+        for (const [k, v] of Object.entries(data)) if (v !== undefined) set[`${group}.${k}`] = v;
+        return SiteContent.findOneAndUpdate({ _key: 'main' }, { $set: set }, { new: true, upsert: true, runValidators: true });
     },
 
     // Update a specific section

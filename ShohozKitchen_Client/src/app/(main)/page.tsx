@@ -2,9 +2,9 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import NewHomePage from '@/components/home/NewHomePage';
 
+// No title or description here: the homepage uses exactly what the super admin sets
+// under Digital marketing → SEO (see the root layout's generateMetadata).
 export const metadata: Metadata = {
-  title: "Your trusted online marketplace",
-  description: "Shohoz Kitchen is your trusted online marketplace in Bangladesh. Browse thousands of quality products at the best prices.",
   alternates: { canonical: "/" },
 };
 

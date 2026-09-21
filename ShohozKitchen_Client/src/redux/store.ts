@@ -10,6 +10,7 @@ import {
 } from './slices';
 
 import { baseApi } from './api/baseApi';
+import { marketingMiddleware } from './marketingMiddleware';
 
 const rootReducer = combineReducers({
     [baseApi.reducerPath]: baseApi.reducer,
@@ -27,7 +28,7 @@ export const store = configureStore({
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
             serializableCheck: false,
-        }).concat(baseApi.middleware),
+        }).concat(baseApi.middleware, marketingMiddleware),
     devTools: process.env.NODE_ENV !== 'production',
 });
 

@@ -6,14 +6,13 @@ import toast from 'react-hot-toast';
 import { LuRotateCcw } from 'react-icons/lu';
 import { useGetSiteContentQuery, useUpdateSiteContentMutation } from '@/redux/api/siteContentApi';
 import { SingleImageUploader } from '@/components/ui/ImageUploader';
-import { Badge, Btn, Card, Field, INPUT, TEXTAREA, cx } from '@/components/admin/ui';
+import { Badge, Btn, Card, Field, INPUT, cx } from '@/components/admin/ui';
 import { CardSkeleton, Note, SaveRow } from './parts';
 import { apiError, cssRootDefault, isHexColor } from './helpers';
 
 type Theme = { primaryColor?: string; secondaryColor?: string; logoUrl?: string; faviconUrl?: string };
 type General = { storeName?: string; tagline?: string; currency?: string };
-type Seo = { title?: string; description?: string; keywords?: string; googleAnalyticsId?: string; facebookPixel?: string };
-type SiteContent = { theme?: Theme; general?: General; seo?: Seo };
+type SiteContent = { theme?: Theme; general?: General };
 
 const CURRENCIES = [
     { value: 'BDT', label: '৳ BDT — Bangladeshi Taka' },
@@ -36,7 +35,10 @@ function useSectionDraft<T extends Record<string, string | undefined>>(saved: T)
     return { values, set, changed, dirty: changedKeys.length > 0, discard: () => setDraft({}) };
 }
 
-/** Settings → Store: brand colours & logo, store identity and SEO (all site-content). */
+/**
+ * Settings → Store: brand colours & logo and store identity (site-content).
+ * SEO and tracking IDs moved to Digital marketing, which only the super admin opens.
+ */
 export default function StoreSettings() {
     const { data: res, isLoading, isError, refetch } = useGetSiteContentQuery({});
     const content = (res as { data?: SiteContent } | undefined)?.data;
@@ -51,7 +53,7 @@ export default function StoreSettings() {
     }
     if (isError || !content) {
         return (
-            <Card title="Couldn't load store settings" description="Brand colours, logo and SEO could not be fetched from the server.">
+            <Card title="Couldn't load store settings" description="Brand colours and logo could not be fetched from the server.">
                 <Btn onClick={() => refetch()}>Try again</Btn>
             </Card>
         );
@@ -59,7 +61,6 @@ export default function StoreSettings() {
 
     const theme = content.theme || {};
     const general = content.general || {};
-    const seo = content.seo || {};
 
     // Keyed on the saved section, so a card resets once its save has been refetched.
     return (
@@ -67,7 +68,10 @@ export default function StoreSettings() {
             <BrandCard key={JSON.stringify(theme)} saved={theme} storeName={general.storeName} />
             <div className="grid items-start gap-5 lg:grid-cols-2">
                 <StoreInfoCard key={JSON.stringify(general)} saved={general} />
-                <SeoCard key={JSON.stringify(seo)} saved={seo} />
+                <Note>
+                    The search-engine title and description, Google Analytics, Tag Manager, Meta and TikTok
+                    pixels and Search Console are under <b>Digital marketing</b>, which the super admin manages.
+                </Note>
             </div>
         </div>
     );
@@ -259,62 +263,3 @@ function StoreInfoCard({ saved }: { saved: General }) {
     );
 }
 
-/* ─── SEO & marketing ─────────────────────────────────────── */
-
-const GA_ID = /^G-[A-Z0-9]{4,}$/i;
-const PIXEL_ID = /^\d{6,20}$/;
-
-function SeoCard({ saved }: { saved: Seo }) {
-    const [update, { isLoading: saving }] = useUpdateSiteContentMutation();
-    const { values, set, changed, dirty, discard } = useSectionDraft<Seo>(saved);
-
-    const title = values.title || '';
-    const description = values.description || '';
-    const ga = (values.googleAnalyticsId || '').trim();
-    const pixel = (values.facebookPixel || '').trim();
-    // Only complain about a format staff just typed — never block saving on old data.
-    const gaError = changed('googleAnalyticsId') && ga && !GA_ID.test(ga) ? 'A GA4 ID looks like G-XXXXXXXXXX' : undefined;
-    const pixelError = changed('facebookPixel') && pixel && !PIXEL_ID.test(pixel) ? 'A Pixel ID is digits only' : undefined;
-
-    const onSave = async () => {
-        try {
-            await update({ seo: { ...values, googleAnalyticsId: ga, facebookPixel: pixel } }).unwrap();
-            toast.success('SEO & marketing saved');
-        } catch (err) {
-            toast.error(apiError(err, 'Could not save the SEO settings'));
-        }
-    };
-
-    const counter = (n: number, min: number, max: number) => (
-        <span className={cx(n > max ? 'text-amber-600' : n >= min ? 'text-emerald-600' : undefined)}>
-            {n} characters · {min}–{max} recommended
-        </span>
-    );
-
-    return (
-        <Card title="SEO & marketing" description="How the store appears in search results, plus tracking IDs.">
-            <div className="space-y-4">
-                <Field label="Meta title" hint={counter(title.length, 50, 60)}>
-                    <input className={INPUT} value={title} placeholder="Shohoz Kitchen — Your trusted online marketplace"
-                        onChange={(e) => set('title', e.target.value)} />
-                </Field>
-                <Field label="Meta description" hint={counter(description.length, 150, 160)}>
-                    <textarea className={cx(TEXTAREA, 'resize-none')} rows={3} value={description}
-                        placeholder="A short description of your store"
-                        onChange={(e) => set('description', e.target.value)} />
-                </Field>
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Google Analytics ID" error={gaError} hint="Your GA4 measurement ID">
-                        <input className={cx(INPUT, 'font-mono')} value={values.googleAnalyticsId || ''} placeholder="G-XXXXXXXXXX"
-                            onChange={(e) => set('googleAnalyticsId', e.target.value)} />
-                    </Field>
-                    <Field label="Facebook Pixel ID" error={pixelError} hint="For Facebook Ads tracking">
-                        <input className={cx(INPUT, 'font-mono')} inputMode="numeric" value={values.facebookPixel || ''} placeholder="123456789012345"
-                            onChange={(e) => set('facebookPixel', e.target.value)} />
-                    </Field>
-                </div>
-            </div>
-            <SaveRow canSave={dirty && !gaError && !pixelError} dirty={dirty} saving={saving} onSave={onSave} onDiscard={discard} />
-        </Card>
-    );
-}

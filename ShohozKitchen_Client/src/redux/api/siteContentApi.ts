@@ -28,6 +28,18 @@ export const siteContentApi = baseApi.injectEndpoints({
             invalidatesTags: ['SiteContent'],
         }),
 
+        // Super admin: tracking IDs and verification codes (Digital marketing)
+        updateMarketing: builder.mutation({
+            query: (data: Record<string, string>) => ({ url: '/site-content/marketing', method: 'PUT', body: data }),
+            invalidatesTags: ['SiteContent'],
+        }),
+
+        // Super admin: the storefront's SEO title, description and keywords
+        updateSeo: builder.mutation({
+            query: (data: Record<string, string>) => ({ url: '/site-content/seo', method: 'PUT', body: data }),
+            invalidatesTags: ['SiteContent'],
+        }),
+
         // Public: get single legal page by slug
         getLegalPage: builder.query({
             query: (slug: string) => `/site-content/legal/${slug}`,
@@ -56,6 +68,8 @@ export const {
     useGetSiteContentQuery,
     useUpdateSiteContentMutation,
     useUpdateSiteSectionMutation,
+    useUpdateMarketingMutation,
+    useUpdateSeoMutation,
     useGetLegalPageQuery,
     useGetAllLegalPagesQuery,
     useUpdateLegalPageMutation,

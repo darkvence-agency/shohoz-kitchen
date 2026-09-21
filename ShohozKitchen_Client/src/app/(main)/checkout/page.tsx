@@ -19,6 +19,7 @@ import {
 } from 'react-icons/fi';
 import Link from 'next/link';
 import { toast } from 'react-hot-toast';
+import { trackBeginCheckout, trackPurchase } from '@/lib/marketing';
 
 const COUPON_STORAGE_KEY = 'shohozkitchen_applied_coupon';
 
@@ -213,6 +214,18 @@ const CheckoutPage = () => {
         if (items.length === 0 && !placedOrder) router.push('/cart');
     }, [items, router, placedOrder]);
 
+    // InitiateCheckout / begin_checkout — once per visit to the checkout page.
+    const checkoutTracked = React.useRef(false);
+    useEffect(() => {
+        if (checkoutTracked.current || items.length === 0) return;
+        checkoutTracked.current = true;
+        trackBeginCheckout(
+            items.map((i: any) => ({ id: i.productId || i.id, name: i.name, price: Number(i.price) || 0, quantity: i.quantity, category: i.category || undefined })),
+            totalPrice,
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [items.length]);
+
     // Keep selected payment valid if admin hides the current method
     useEffect(() => {
         if (methods.length && !methods.some(m => m.id === selectedPayment)) {
@@ -355,9 +368,24 @@ const CheckoutPage = () => {
             }
         };
 
+        // Purchase — captured now, because the cart is emptied the moment the order goes
+        // through. Sent before any hand-off to a payment gateway, while the page is still here.
+        const purchasedItems = items.map((i: any) => ({
+            id: i.productId || i.id, name: i.name, price: Number(i.price) || 0, quantity: i.quantity, category: i.category || undefined,
+        }));
+        const reportPurchase = (ord: any) => trackPurchase(
+            {
+                id: String(ord?.orderId || ord?._id || ''),
+                value: Number(ord?.total) || totalPrice + shippingCost - (appliedCoupon?.discount || 0),
+                shipping: Number(ord?.shippingCost ?? shippingCost) || 0,
+            },
+            purchasedItems,
+        );
+
         try {
             if (isAuthenticated) {
                 const result = await createOrder(orderPayload).unwrap();
+                reportPurchase(result?.data?.order || result?.data);
                 items.forEach((i: any) => dispatch(removeFromCart(i.id)));
                 try { localStorage.removeItem('shohozkitchen_selected_cart'); } catch {}
                 localStorage.removeItem(COUPON_STORAGE_KEY);
@@ -375,6 +403,7 @@ const CheckoutPage = () => {
                 setPlacedOrder({ _id: ord?._id, orderId: ord?.orderId || ord?.orderNumber });
             } else {
                 const result = await guestCheckout(orderPayload).unwrap();
+                reportPurchase(result?.data?.order || result?.data);
                 items.forEach((i: any) => dispatch(removeFromCart(i.id)));
                 try { localStorage.removeItem('shohozkitchen_selected_cart'); } catch {}
                 localStorage.removeItem(COUPON_STORAGE_KEY);

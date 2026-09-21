@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import SiteContentService from './siteContent.service';
+import { updateMarketingValidation, updateSeoValidation } from './siteContent.validation';
 
 const SiteContentController = {
     // GET /api/site-content — Public
@@ -16,10 +17,27 @@ const SiteContentController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Site content updated', data: content });
     }),
 
+    // PUT /api/site-content/marketing — Super admin only
+    updateMarketing: catchAsync(async (req: Request, res: Response) => {
+        // Parse again for the cleaned values (trimmed, upper-cased, the code pulled
+        // out of a pasted <meta> tag) — validateRequest only checks, it does not rewrite.
+        const data = updateMarketingValidation.shape.body.parse(req.body) as Record<string, string>;
+        const content = await SiteContentService.updateMarketing(data);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Marketing settings saved', data: content?.marketing });
+    }),
+
+    // PUT /api/site-content/seo — Super admin only
+    updateSeo: catchAsync(async (req: Request, res: Response) => {
+        const data = updateSeoValidation.shape.body.parse(req.body) as Record<string, string>;
+        const content = await SiteContentService.updateSeo(data);
+        sendResponse(res, { statusCode: 200, success: true, message: 'SEO settings saved', data: content?.seo });
+    }),
+
     // PATCH /api/site-content/:section — Admin only (section update)
     updateSection: catchAsync(async (req: Request, res: Response) => {
         const { section } = req.params;
-        const validSections = ['ticker', 'contact', 'floating', 'footer', 'defaultTagline', 'seo', 'announcement', 'legalPages'];
+        // 'seo' and 'marketing' are not here: they are super admin only, on their own routes.
+        const validSections = ['ticker', 'contact', 'floating', 'footer', 'defaultTagline', 'announcement', 'legalPages'];
         if (!validSections.includes(section)) {
             return sendResponse(res, { statusCode: 400, success: false, message: `Invalid section: ${section}` });
         }

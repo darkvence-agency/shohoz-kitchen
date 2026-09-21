@@ -11,7 +11,7 @@ import {
     LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight, LuScanLine,
     LuReceipt, LuHandCoins, LuWallet, LuSettings, LuActivity,
     LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuUserCog, LuShield,
-    LuMessageSquare, LuMessagesSquare,
+    LuMessageSquare, LuMessagesSquare, LuChartLine, LuTarget, LuSearch, LuGlobe,
     LuPanelLeft, LuChevronRight, LuLogOut, LuX,
 } from 'react-icons/lu';
 import NotificationBell from '@/components/notifications/NotificationBell';
@@ -96,6 +96,17 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
             { name: 'Investors', href: '/dashboard/admin/investors', icon: LuHandCoins },
             { name: 'Payments', href: '/dashboard/admin/payments', icon: LuCreditCard },
             { name: 'Courier payouts', href: '/dashboard/admin/courier-payouts', icon: LuWallet },
+        ],
+    },
+    {
+        // Super admin only (access.ts).
+        label: 'Digital marketing',
+        items: [
+            { name: 'Tag Manager', href: '/dashboard/admin/marketing/tag-manager', icon: LuTags },
+            { name: 'Google Analytics', href: '/dashboard/admin/marketing/analytics', icon: LuChartLine },
+            { name: 'Pixels', href: '/dashboard/admin/marketing/pixels', icon: LuTarget },
+            { name: 'Search Console', href: '/dashboard/admin/marketing/search-console', icon: LuSearch },
+            { name: 'SEO', href: '/dashboard/admin/marketing/seo', icon: LuGlobe },
         ],
     },
     {
