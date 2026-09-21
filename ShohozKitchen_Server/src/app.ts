@@ -47,6 +47,12 @@ import { AccountsRoutes } from './app/modules/accounts/accounts.routes';
 
 const app: Application = express();
 
+// The API runs behind one reverse proxy (Coolify's Traefik). Trusting that one hop
+// makes req.ip the visitor's address instead of the proxy's; otherwise every visitor
+// looks like the same client and the login / register rate limits are shared by
+// the whole site.
+app.set('trust proxy', 1);
+
 // ── Body Parsers ─────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

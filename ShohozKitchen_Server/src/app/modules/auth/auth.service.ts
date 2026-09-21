@@ -331,7 +331,9 @@ const AuthService = {
     async forgotPassword(email: string): Promise<{ resetLink: string } | null> {
         const user = await User.findOne({ email, isDeleted: false });
         // No email enumeration — caller always responds success even if not found.
-        if (!user) return null;
+        // An editor's password is whatever an admin set for them (see updatePassword),
+        // so no reset link is sent — the same silent "success" as an unknown email.
+        if (!user || user.role === 'editor') return null;
 
         const resetToken = crypto.randomBytes(32).toString('hex');
         user.passwordResetToken = sha256(resetToken);
@@ -354,6 +356,10 @@ const AuthService = {
         });
 
         if (!user) throw new AppError(400, 'Invalid or expired reset token');
+        // A link requested before the account was made an editor must not work either.
+        if (user.role === 'editor') {
+            throw new AppError(403, 'Editors cannot change their password. Ask an admin to set a new one.');
+        }
         user.password = newPassword;
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
@@ -363,6 +369,11 @@ const AuthService = {
     async updatePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
         const user = await User.findById(userId).select('+password');
         if (!user || user.isDeleted) throw new AppError(404, 'User not found');
+        // The owner's rule: editors keep the password an admin gave them. Super admins,
+        // admins and customers change their own.
+        if (user.role === 'editor') {
+            throw new AppError(403, 'Editors cannot change their password. Ask an admin to set a new one.');
+        }
 
         const isPasswordCorrect = await user.comparePassword(currentPassword);
         if (!isPasswordCorrect) throw new AppError(401, 'Current password is incorrect');

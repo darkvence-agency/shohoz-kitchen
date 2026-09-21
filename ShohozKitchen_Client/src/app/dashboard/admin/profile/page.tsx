@@ -219,7 +219,12 @@ export default function AdminProfilePage() {
                 </div>
 
                 <div className="mt-5">
-                    {!showPw ? (
+                    {/* Editors keep the password an admin set for them (the API refuses too). */}
+                    {user?.role === 'editor' ? (
+                        <p className="inline-flex items-center gap-2 rounded-xl bg-gray-50 px-4 py-2.5 text-sm text-gray-500">
+                            <FiLock size={14} /> Your password is set by an admin. Ask them if you need a new one.
+                        </p>
+                    ) : !showPw ? (
                         <button onClick={() => setShowPw(true)} className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700 border border-gray-200 rounded-xl px-4 py-2.5 hover:bg-gray-50 transition-all">
                             <FiLock size={14} /> Change Password
                         </button>
