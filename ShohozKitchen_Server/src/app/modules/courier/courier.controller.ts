@@ -3,13 +3,21 @@ import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
 import CourierService from './courier.service';
 import config from '../../config';
+import crypto from 'crypto';
+
+/** Compare secrets in constant time, so response timing reveals nothing about them. */
+const sameSecret = (a: string, b: string): boolean => {
+    const x = Buffer.from(a);
+    const y = Buffer.from(b);
+    return x.length === y.length && crypto.timingSafeEqual(x, y);
+};
 
 const CourierController = {
-    // GET /api/courier/packages?state=&search=&page=&limit=
+    // GET /api/courier/packages?tab=&search=&page=&limit=
     listPackages: catchAsync(async (req: Request, res: Response) => {
-        const { state, search, page, limit } = req.query;
+        const { tab, search, page, limit } = req.query;
         const result = await CourierService.listPackages({
-            state: state as string,
+            tab: tab as string,
             search: search as string,
             page: Number(page) || 1,
             limit: Number(limit) || 20,
@@ -57,6 +65,23 @@ const CourierController = {
         });
     }),
 
+    // GET /api/courier/counts?search= — parcels per board tab, and what needs attention
+    tabCounts: catchAsync(async (req: Request, res: Response) => {
+        const data = await CourierService.tabCounts(req.query.search as string | undefined);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Courier counts fetched', data });
+    }),
+
+    // POST /api/courier/sync-active — refresh every parcel still with the courier
+    syncActive: catchAsync(async (_req: Request, res: Response) => {
+        const result = await CourierService.syncActive();
+        sendResponse(res, {
+            statusCode: 200,
+            success: true,
+            message: result.total ? `Synced ${result.ok}/${result.total} parcel(s)` : 'Nothing is with the courier right now',
+            data: result,
+        });
+    }),
+
     // GET /api/courier/balance
     getBalance: catchAsync(async (_req: Request, res: Response) => {
         const balance = await CourierService.getBalance();
@@ -65,18 +90,23 @@ const CourierController = {
 
     // POST /api/courier/webhook  (public — Steadfast calls this; guarded by shared secret)
     webhook: catchAsync(async (req: Request, res: Response) => {
+        // A delivery webhook marks cash-on-delivery orders paid, so an unsigned one is
+        // refused outright. With no secret configured the webhook is simply off, and the
+        // board's "Sync all" and the background sync keep statuses up to date instead.
         const secret = config.steadfast.webhook_secret;
-        if (secret) {
-            const authHeader = (req.headers['authorization'] as string) || '';
-            const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
-            const provided =
-                bearerToken ||
-                (req.headers['x-webhook-secret'] as string) ||
-                (req.query.secret as string) ||
-                '';
-            if (provided !== secret) {
-                return sendResponse(res, { statusCode: 401, success: false, message: 'Invalid webhook secret', data: null });
-            }
+        if (!secret) {
+            return sendResponse(res, { statusCode: 503, success: false, message: 'Courier webhook is not configured', data: null });
+        }
+        const authHeader = (req.headers['authorization'] as string) || '';
+        const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const provided = String(
+            bearerToken ||
+            (req.headers['x-webhook-secret'] as string) ||
+            (req.query.secret as string) ||
+            '',
+        );
+        if (!sameSecret(provided, secret)) {
+            return sendResponse(res, { statusCode: 401, success: false, message: 'Invalid webhook secret', data: null });
         }
         const result = await CourierService.applyWebhook(req.body || {});
         sendResponse(res, { statusCode: 200, success: true, message: 'Webhook processed', data: result });

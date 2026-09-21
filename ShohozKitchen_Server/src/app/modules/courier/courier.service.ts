@@ -4,6 +4,7 @@ import AppError from '../../utils/AppError';
 import SteadfastService from './steadfast.service';
 import OrderService from '../order/order.service';
 import { getCodChargeBps } from '../shipping/shipping.service';
+import config from '../../config';
 
 // ── Status sets shared across booking / listing / sync ───────────────
 const BOOKABLE_STATUSES = ['pending', 'confirmed', 'processing'];          // can still go to courier
@@ -106,6 +107,98 @@ async function refreshPackageCore(order: any, packageId: string) {
     };
 }
 
+// ── Courier board tabs ───────────────────────────────────────────────
+// Every parcel sits in exactly one tab. The list and the counts are both computed
+// from TAB_EXPR, so a tab's count can never disagree with what the tab shows.
+//
+//   new         placed, not confirmed yet            (confirm by phone first)
+//   ready       confirmed / processing, not booked   (book with the courier)
+//   sent        booked, courier has not picked it up (Steadfast "in_review")
+//   in_transit  with the courier — or shipped by hand without a booking
+//   on_hold     courier is holding it                (call the customer)
+//   delivered
+//   returned    came back — including a courier cancel not yet confirmed here
+//   cancelled   cancelled before it ever reached a courier
+export const COURIER_TABS = ['new', 'ready', 'sent', 'in_transit', 'on_hold', 'delivered', 'returned', 'cancelled'] as const;
+export type CourierTab = typeof COURIER_TABS[number];
+
+const BOOKED_EXPR = { $ne: [{ $ifNull: ['$packages.consignmentId', ''] }, ''] };
+const COURIER_EXPR = { $toLower: { $ifNull: ['$packages.courierStatus', ''] } };
+const COURIER_CANCELLED = ['cancelled', 'cancelled_approval_pending'];
+
+export const TAB_EXPR = {
+    $switch: {
+        branches: [
+            { case: { $eq: ['$packages.status', 'delivered'] }, then: 'delivered' },
+            { case: { $in: ['$packages.status', ['returned', 'refunded']] }, then: 'returned' },
+            // A booked parcel that ended up cancelled went out and came back.
+            { case: { $eq: ['$packages.status', 'cancelled'] }, then: { $cond: [BOOKED_EXPR, 'returned', 'cancelled'] } },
+            { case: { $and: [BOOKED_EXPR, { $in: [COURIER_EXPR, COURIER_CANCELLED] }] }, then: 'returned' },
+            { case: { $and: [BOOKED_EXPR, { $eq: [COURIER_EXPR, 'hold'] }] }, then: 'on_hold' },
+            { case: { $and: [BOOKED_EXPR, { $in: [COURIER_EXPR, ['', 'in_review']] }] }, then: 'sent' },
+            { case: BOOKED_EXPR, then: 'in_transit' },
+            { case: { $eq: ['$packages.status', 'pending'] }, then: 'new' },
+            { case: { $in: ['$packages.status', ['confirmed', 'processing']] }, then: 'ready' },
+        ],
+        // shipped / on_the_way / … with no Steadfast booking: sent some other way.
+        default: 'in_transit',
+    },
+};
+
+// What a parcel needs from a person, if anything.
+export const ATTENTION_EXPR = {
+    $switch: {
+        branches: [
+            {
+                // The courier says it is coming back, but nobody has confirmed the return here.
+                case: {
+                    $and: [
+                        BOOKED_EXPR,
+                        { $in: [COURIER_EXPR, COURIER_CANCELLED] },
+                        { $not: [{ $in: ['$packages.status', ['returned', 'refunded', 'cancelled']] }] },
+                    ],
+                },
+                then: 'confirm_return',
+            },
+            { case: { $and: [BOOKED_EXPR, { $eq: [COURIER_EXPR, 'hold'] }] }, then: 'on_hold' },
+        ],
+        default: null,
+    },
+};
+
+/** One row per parcel, with its tab and attention flag, narrowed by an optional search. */
+function boardBase(search?: string): any[] {
+    const match: any = {};
+    if (search) {
+        const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        match.$or = [
+            { orderId: rx },
+            { 'shippingAddress.fullName': rx },
+            { 'shippingAddress.phone': rx },
+            { 'packages.trackingNumber': rx },
+        ];
+    }
+    return [
+        { $match: match },
+        { $unwind: { path: '$packages', includeArrayIndex: 'pkgIndex' } },
+        { $addFields: { tab: TAB_EXPR, attention: ATTENTION_EXPR } },
+    ];
+}
+
+// "Sync all" and the background sync both work on this set: booked parcels that are
+// still moving. Oldest-updated first, so a backlog is worked through in turn.
+const SYNC_ALL_LIMIT = 200;
+export async function activeBookedRefs(limit: number): Promise<{ orderId: string; packageId: string }[]> {
+    const rows = await Order.aggregate([
+        { $unwind: '$packages' },
+        { $match: { 'packages.consignmentId': { $nin: [null, ''] }, 'packages.status': { $in: IN_TRANSIT_STATUSES } } },
+        { $sort: { updatedAt: 1 } },
+        { $limit: limit },
+        { $project: { _id: 0, orderId: '$_id', packageId: '$packages._id' } },
+    ]);
+    return rows.map((r: any) => ({ orderId: String(r.orderId), packageId: String(r.packageId) }));
+}
+
 // Group [{orderId, packageId}] → Map<orderId, packageId[]> so each order loads/saves once.
 function groupByOrder(items: { orderId: string; packageId: string }[]) {
     const map = new Map<string, string[]>();
@@ -119,51 +212,28 @@ function groupByOrder(items: { orderId: string; packageId: string }[]) {
 }
 
 const CourierService = {
-    // ── Flattened, filterable list of shipments (the Shipments board) ──
+    // ── Flattened, filterable list of shipments (the courier board) ──
     async listPackages(opts: {
-        state?: string;       // all | to_ship | shipped | delivered | cancelled
+        tab?: string;         // one of COURIER_TABS, or 'all'
         search?: string;      // order no / customer / phone / tracking
         page?: number;
         limit?: number;
     }) {
         const page = Math.max(1, Number(opts.page) || 1);
         const limit = Math.min(100, Math.max(1, Number(opts.limit) || 20));
-
-        const pkgMatch: any = {};
-
-        // State filter (booking lifecycle)
-        if (opts.state === 'to_ship') {
-            pkgMatch['packages.consignmentId'] = { $in: [null, ''] };
-            pkgMatch['packages.status'] = { $in: BOOKABLE_STATUSES };
-        } else if (opts.state === 'shipped') {
-            pkgMatch['packages.consignmentId'] = { $nin: [null, ''] };
-            pkgMatch['packages.status'] = { $in: IN_TRANSIT_STATUSES };
-        } else if (opts.state === 'delivered') {
-            pkgMatch['packages.status'] = 'delivered';
-        } else if (opts.state === 'cancelled') {
-            pkgMatch['packages.status'] = { $in: ['cancelled', 'returned', 'refunded'] };
-        }
-
-        const searchMatch: any = {};
-        if (opts.search) {
-            const rx = new RegExp(opts.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-            searchMatch.$or = [
-                { orderId: rx },
-                { 'shippingAddress.fullName': rx },
-                { 'shippingAddress.phone': rx },
-                { 'packages.trackingNumber': rx },
-            ];
-        }
+        const tab = COURIER_TABS.includes(opts.tab as CourierTab) ? (opts.tab as CourierTab) : null;
 
         const basePipeline: any[] = [
-            { $match: searchMatch.$or ? searchMatch : {} },
-            { $unwind: { path: '$packages', includeArrayIndex: 'pkgIndex' } },
-            { $match: pkgMatch },
+            ...boardBase(opts.search),
+            ...(tab ? [{ $match: { tab } }] : []),
         ];
+
+        // The work queues show the longest-waiting order first; the rest, the newest.
+        const oldestFirst = tab === 'new' || tab === 'ready';
 
         const rowsPipeline = [
             ...basePipeline,
-            { $sort: { createdAt: -1 } },
+            { $sort: { createdAt: oldestFirst ? 1 : -1 } },
             { $skip: (page - 1) * limit },
             { $limit: limit },
             {
@@ -231,6 +301,9 @@ const CourierService = {
                     postalCode: '$shippingAddress.postalCode',
                     note: { $ifNull: ['$note', ''] },
                     createdAt: '$createdAt',
+                    tab: '$tab',
+                    attention: '$attention',
+                    bookedAt: '$packages.courierBookedAt',
                 },
             },
         ];
@@ -245,6 +318,41 @@ const CourierService = {
             data: rows,
             meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
         };
+    },
+
+    // ── How many parcels are in each tab, and how many need someone ──
+    async tabCounts(search?: string) {
+        const [groups, attention] = await Promise.all([
+            Order.aggregate([...boardBase(search), { $group: { _id: '$tab', n: { $sum: 1 } } }]),
+            Order.aggregate([...boardBase(search), { $match: { attention: { $ne: null } } }, { $group: { _id: '$attention', n: { $sum: 1 } } }]),
+        ]);
+        const counts: Record<string, number> = Object.fromEntries(COURIER_TABS.map((t) => [t, 0]));
+        let all = 0;
+        for (const g of groups as { _id: string; n: number }[]) {
+            counts[g._id] = (counts[g._id] || 0) + g.n;
+            all += g.n;
+        }
+        const att = (k: string) => (attention as { _id: string; n: number }[]).find((a) => a._id === k)?.n || 0;
+        const { api_key, secret_key, webhook_secret, auto_sync } = config.steadfast;
+        const configured = Boolean(api_key && secret_key);
+        return {
+            counts: { all, ...counts },
+            attention: { confirmReturn: att('confirm_return'), onHold: att('on_hold') },
+            // What the page needs to warn about: a courier that is not connected cannot
+            // book or sync anything, and an unsecured webhook is switched off.
+            setup: { configured, webhookSecured: Boolean(webhook_secret), autoSync: auto_sync && configured },
+        };
+    },
+
+    // ── Pull the latest status for every parcel still with the courier ──
+    async syncActive() {
+        const { api_key, secret_key } = config.steadfast;
+        if (!api_key || !secret_key) {
+            throw new AppError(400, 'Steadfast is not connected yet — add its API key and secret key first.');
+        }
+        const refs = await activeBookedRefs(SYNC_ALL_LIMIT);
+        if (!refs.length) return { total: 0, ok: 0, failed: 0, results: [] };
+        return this.bulkRefresh(refs);
     },
 
     // ── Single book (kept for the order-detail page) ──

@@ -1,11 +1,27 @@
 import { baseApi } from './baseApi';
 
+/**
+ * The courier board's tabs — every parcel is in exactly one (courier.service.ts
+ * TAB_EXPR on the API decides which, for both the list and the counts).
+ */
+export type CourierTab = 'new' | 'ready' | 'sent' | 'in_transit' | 'on_hold' | 'delivered' | 'returned' | 'cancelled';
+
+/** What a parcel needs from a person: confirm a courier return, or call about a hold. */
+export type CourierAttention = 'confirm_return' | 'on_hold' | null;
+
+export interface ICourierCounts {
+    counts: Record<CourierTab | 'all', number>;
+    attention: { confirmReturn: number; onHold: number };
+    setup: { configured: boolean; webhookSecured: boolean; autoSync: boolean };
+}
+
 export interface ICourierPackage {
     orderId: string;
     orderNo: string;
     packageId: string;
-    shop: string | null;
-    shopName: string;
+    tab: CourierTab;
+    attention: CourierAttention;
+    bookedAt?: string;
     status: string;
     subtotal: number;
     itemCount: number;
@@ -44,10 +60,22 @@ export const courierApi = baseApi.injectEndpoints({
         // GET /courier/packages — flattened shipments (Shipments board)
         getCourierPackages: builder.query<
             { data: ICourierPackage[]; meta: { total: number; page: number; limit: number; totalPages: number } },
-            { shop?: string; state?: string; search?: string; page?: number; limit?: number }
+            { tab?: CourierTab; search?: string; page?: number; limit?: number }
         >({
             query: (params) => ({ url: '/courier/packages', params }),
             providesTags: ['Orders'],
+        }),
+
+        // GET /courier/counts — parcels per tab, what needs attention, whether Steadfast is connected
+        getCourierCounts: builder.query<{ data: ICourierCounts }, { search?: string } | void>({
+            query: (params) => ({ url: '/courier/counts', params: params || undefined }),
+            providesTags: ['Orders'],
+        }),
+
+        // POST /courier/sync-active — pull the latest status for every parcel still with the courier
+        syncActiveCourier: builder.mutation<{ data: IBulkResult; message: string }, void>({
+            query: () => ({ url: '/courier/sync-active', method: 'POST' }),
+            invalidatesTags: ['Orders'],
         }),
 
         // POST /courier/bulk-book — book many selected packages at once
@@ -89,6 +117,8 @@ export const courierApi = baseApi.injectEndpoints({
 
 export const {
     useGetCourierPackagesQuery,
+    useGetCourierCountsQuery,
+    useSyncActiveCourierMutation,
     useBulkBookCourierMutation,
     useBulkRefreshCourierMutation,
     useBookCourierPackageMutation,

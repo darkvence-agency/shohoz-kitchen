@@ -89,7 +89,7 @@ export default function BookCourierModal({ pkg, isBooking, onClose, onConfirm }:
                     <div className="rounded-xl border border-gray-200 p-4 space-y-3">
                         <div className="flex items-center justify-between">
                             <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Parcel</p>
-                            <span className="text-xs text-gray-500">{pkg.shopName || 'Shohoz Kitchen (Official)'}</span>
+                            <span className="text-xs text-gray-500">{pkg.itemCount} item{pkg.itemCount === 1 ? '' : 's'}</span>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                             {pkg.items?.slice(0, 4).map((it, i) =>

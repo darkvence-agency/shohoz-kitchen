@@ -4,14 +4,16 @@ import { authMiddleware, authorizeRoles } from '../../middlewares/auth';
 
 const router = express.Router();
 
-// ── Public: Steadfast delivery-status webhook (guarded by shared secret) ──
+// ── Public: Steadfast delivery-status webhook (refused unless the shared secret matches) ──
 router.post('/webhook', CourierController.webhook);
 
 // ── Admin / super admin: Steadfast courier management ──
 const admin = [authMiddleware, authorizeRoles('admin', 'superadmin')];
 
-// Shipments board — flattened shipments with state filters.
+// Courier board — flattened parcels by tab, the per-tab counts, and "Sync all".
 router.get('/packages', ...admin, CourierController.listPackages);
+router.get('/counts', ...admin, CourierController.tabCounts);
+router.post('/sync-active', ...admin, CourierController.syncActive);
 
 // Bulk actions (checkbox selections from the Shipments board).
 router.post('/bulk-book', ...admin, CourierController.bulkBook);
