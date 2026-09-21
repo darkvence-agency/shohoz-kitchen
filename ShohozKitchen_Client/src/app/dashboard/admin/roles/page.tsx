@@ -186,7 +186,7 @@ function RolesPageInner() {
 
             <div className="flex items-start gap-2.5 p-3.5 rounded-md bg-blue-50 border border-blue-100 text-blue-700 text-sm">
                 <FiInfo size={16} className="mt-0.5 flex-shrink-0" />
-                <span>Only a <b>Super Admin</b> can change roles. New staff are added from <b>Customers → Staff → Add staff</b>.</span>
+                <span>Only a <b>Super Admin</b> can change roles. New staff are added from <b>Settings → Staff → Add staff</b>.</span>
             </div>
 
             <div className="bg-white p-4 rounded-md border border-gray-200 shadow-sm flex gap-4 items-center">

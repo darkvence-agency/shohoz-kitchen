@@ -10,7 +10,7 @@ import {
     LuUsers, LuUserCheck, LuShoppingCart, LuChartColumn, LuStar, LuTicketPercent, LuUndo2, LuShieldAlert,
     LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight, LuScanLine,
     LuReceipt, LuHandCoins, LuWallet, LuSettings, LuActivity,
-    LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuShield,
+    LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuUserCog, LuShield,
     LuMessageSquare, LuMessagesSquare,
     LuPanelLeft, LuChevronRight, LuLogOut, LuX,
 } from 'react-icons/lu';
@@ -104,6 +104,8 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
             { name: 'Store settings', href: '/dashboard/admin/settings', icon: LuSettings },
             { name: 'Shipping', href: '/dashboard/admin/shipping', icon: LuTruck },
             { name: 'Site content', href: '/dashboard/admin/site-content', icon: LuLayoutTemplate },
+            // Super admin only (access.ts): add admins and editors, change roles.
+            { name: 'Staff', href: '/dashboard/admin/staff', icon: LuUserCog },
             { name: 'Roles & permissions', href: '/dashboard/admin/roles', icon: LuShield },
             { name: 'System health', href: '/dashboard/admin/health', icon: LuActivity },
             { name: 'My profile', href: '/dashboard/admin/profile', icon: LuUser },

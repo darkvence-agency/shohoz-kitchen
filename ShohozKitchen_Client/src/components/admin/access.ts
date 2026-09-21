@@ -31,12 +31,12 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
         'Everything in the admin panel',
         'Money: Accounts overview, Expenses, Investors, Courier payouts',
         'Dealers: Suppliers and Purchases',
-        'Staff roles, and deleting users',
+        'Staff: add admins and editors, change roles, and delete users',
     ],
     admin: [
         'Dashboard, Reports, Staff activity, Orders, Products, Customers, Inventory, Settings and the rest',
         'No money pages (Accounts, Expenses, Investors, Courier payouts)',
-        'No dealer pages (Suppliers, Purchases), no Roles',
+        'No dealer pages (Suppliers, Purchases), no Staff or Roles',
         'Can block users but cannot delete them',
     ],
     editor: [
@@ -47,8 +47,8 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
     ],
 };
 
-/** Pages only the super admin opens (money and dealers, roles). */
-const SUPERADMIN_ONLY = ['/accounts', '/expenses', '/investors', '/courier-payouts', '/suppliers', '/purchases', '/roles'];
+/** Pages only the super admin opens (money and dealers, staff and roles). */
+const SUPERADMIN_ONLY = ['/accounts', '/expenses', '/investors', '/courier-payouts', '/suppliers', '/purchases', '/staff', '/roles'];
 
 /** Everything an editor may open (and nothing else). */
 const EDITOR_PAGES = ['/orders', '/products', '/fraud-check', '/profile', '/notifications'];

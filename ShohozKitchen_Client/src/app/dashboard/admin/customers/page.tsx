@@ -3,25 +3,24 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { LuPlus, LuEye, LuBan, LuCircleCheck, LuPencil, LuUserPlus, LuUsers } from 'react-icons/lu';
+import { LuPlus, LuEye, LuBan, LuCircleCheck, LuPencil, LuUsers } from 'react-icons/lu';
 import {
     useGetAdminUsersQuery,
     useGetAdminUserStatsQuery,
     useUpdateUserMutation,
     useCreateCustomerMutation,
 } from '@/redux/api/userApi';
-import { useUpdateUserRoleMutation } from '@/redux/api/roleApi';
-import { useRegisterMutation } from '@/redux/api/authApi';
-import { ROLE_HINT, ROLE_LABEL } from '@/components/admin/access';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 import toast from 'react-hot-toast';
 import {
-    PageHeader, Btn, SearchInput, SelectPill, Segmented, FilterBar, StatTile, Badge, BadgeSelect, TableCard,
+    PageHeader, Btn, SearchInput, SelectPill, FilterBar, StatTile, Badge, TableCard,
     TH, TD, TR, EmptyRow, SkeletonRows, Pager, RowMenu, Modal, Field, INPUT, taka, fmtDate, type Tone,
 } from '@/components/admin/ui';
 
+// Buyers only. Staff accounts live on their own page (Settings → Staff).
 const PAGE_SIZE = 10;
+const COLS = 9;
 
 const STATUS_TONE: Record<string, Tone> = { active: 'green', blocked: 'red', pending: 'amber' };
 
@@ -35,38 +34,30 @@ const errMsg = (err: any, fallback: string) =>
     err?.data?.errorMessages?.[0]?.message || err?.data?.message || fallback;
 
 const EMPTY_CUSTOMER = { firstName: '', lastName: '', phone: '', email: '', defaultDiscount: '', loyaltyPoints: '' };
-const EMPTY_ADMIN = { firstName: '', lastName: '', email: '', phone: '', password: '', role: 'admin' as 'admin' | 'editor' };
 
 export default function CustomersPage() {
-    const [tab, setTab] = useState<'customers' | 'staff'>('customers');
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState('all');
     const [page, setPage] = useState(1);
     const q = useDebounced(search);
 
     const currentUser = useSelector((s: RootState) => s.auth.user);
-    // Role changes go through the superadmin-only roles endpoint (the general user
-    // update deliberately strips `role`). So the role controls are superadmin-only.
-    const isSuperadmin = currentUser?.role === 'superadmin';
 
     const { data: usersData, isLoading, isFetching } = useGetAdminUsersQuery({
         page,
         limit: PAGE_SIZE,
-        role: tab === 'customers' ? 'user' : 'staff',   // staff = super admin, admin and editor
+        role: 'user',
         status: status !== 'all' ? status : undefined,
         searchTerm: q || undefined,
     });
     const { data: statsData } = useGetAdminUserStatsQuery(undefined);
     const [updateUser, { isLoading: isUpdating }] = useUpdateUserMutation();
     const [createCustomer, { isLoading: isCreatingCustomer }] = useCreateCustomerMutation();
-    const [updateUserRole] = useUpdateUserRoleMutation();
-    const [registerUser, { isLoading: isCreatingAdmin }] = useRegisterMutation();
 
     const rows: any[] = usersData?.data || [];
     const meta = usersData?.meta || { total: 0, totalPages: 1 };
     const c = statsData?.data?.customers || { total: 0, active: 0, blocked: 0, newThisMonth: 0 };
 
-    const switchTab = (t: 'customers' | 'staff') => { setTab(t); setStatus('all'); setPage(1); };
     const pickStatus = (s: string) => { setStatus(s); setPage(1); };
 
     /* ─── Add customer ─── */
@@ -119,10 +110,8 @@ export default function CustomersPage() {
     };
 
     /* ─── Block / unblock ─── */
-    // Who this admin may block: never a superadmin, never yourself; only a superadmin
-    // may block/unblock a fellow admin.
-    const canBlock = (u: any) =>
-        u._id !== currentUser?.id && u.role !== 'superadmin' && (u.role !== 'admin' || isSuperadmin);
+    // Every row here is a buyer; the only one you may not block is yourself.
+    const canBlock = (u: any) => u._id !== currentUser?.id;
 
     const handleToggleBlock = async (u: any) => {
         const next = u.status === 'blocked' ? 'active' : 'blocked';
@@ -135,63 +124,20 @@ export default function CustomersPage() {
         }
     };
 
-    /* ─── Staff: roles + create admin ─── */
-    const handleRoleChange = async (u: any, role: string) => {
-        if (role === u.role) return;
-        if (!window.confirm(`Change ${u.firstName}'s role to ${ROLE_LABEL[role] || role}?`)) return;
-        try {
-            await updateUserRole({ userId: u._id, role, permissions: [] }).unwrap();
-            toast.success('Role updated');
-        } catch (err: any) {
-            toast.error(errMsg(err, 'Failed to update role'));
-        }
-    };
-
-    const [adminOpen, setAdminOpen] = useState(false);
-    const [aForm, setAForm] = useState(EMPTY_ADMIN);
-
-    const handleCreateAdmin = async () => {
-        if (!aForm.firstName || !aForm.email || !aForm.password) { toast.error('Name, email and password are required'); return; }
-        if (aForm.password.length < 6) { toast.error('Password must be at least 6 characters'); return; }
-        try {
-            // Register as a user, then promote through the superadmin roles endpoint.
-            const { role, ...account } = aForm;
-            const res = await registerUser({ ...account }).unwrap();
-            const newUserId = res?.data?.user?._id;
-            if (newUserId) await updateUserRole({ userId: newUserId, role, permissions: [] }).unwrap();
-            toast.success(`${ROLE_LABEL[role]} account created`);
-            setAdminOpen(false);
-            setAForm(EMPTY_ADMIN);
-        } catch (err: any) {
-            toast.error(errMsg(err, 'Failed to create admin'));
-        }
-    };
-
-    const cols = tab === 'customers' ? 9 : 6;
-
     return (
         <div>
             <PageHeader
                 title="Customers"
-                subtitle={tab === 'customers'
-                    ? 'Buyers, their spend, loyalty points and default discounts.'
-                    : 'Staff accounts that can sign in to this dashboard.'}
-                actions={<>
-                    <Segmented value={tab} onChange={switchTab} options={[{ value: 'customers', label: 'Customers' }, { value: 'staff', label: 'Staff' }]} />
-                    {tab === 'customers'
-                        ? <Btn variant="primary" icon={<LuPlus size={16} />} onClick={() => setAddOpen(true)}>Add customer</Btn>
-                        : isSuperadmin && <Btn variant="primary" icon={<LuUserPlus size={16} />} onClick={() => setAdminOpen(true)}>Add staff</Btn>}
-                </>}
+                subtitle="Buyers, their spend, loyalty points and default discounts."
+                actions={<Btn variant="primary" icon={<LuPlus size={16} />} onClick={() => setAddOpen(true)}>Add customer</Btn>}
             />
 
-            {tab === 'customers' && (
-                <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    <StatTile label="Customers" value={c.total.toLocaleString('en-IN')} active={status === 'all'} onClick={() => pickStatus('all')} />
-                    <StatTile label="Active" value={c.active.toLocaleString('en-IN')} active={status === 'active'} onClick={() => pickStatus('active')} />
-                    <StatTile label="Blocked" value={c.blocked.toLocaleString('en-IN')} active={status === 'blocked'} onClick={() => pickStatus('blocked')} />
-                    <StatTile label="New this month" value={c.newThisMonth.toLocaleString('en-IN')} />
-                </div>
-            )}
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatTile label="Customers" value={c.total.toLocaleString('en-IN')} active={status === 'all'} onClick={() => pickStatus('all')} />
+                <StatTile label="Active" value={c.active.toLocaleString('en-IN')} active={status === 'active'} onClick={() => pickStatus('active')} />
+                <StatTile label="Blocked" value={c.blocked.toLocaleString('en-IN')} active={status === 'blocked'} onClick={() => pickStatus('blocked')} />
+                <StatTile label="New this month" value={c.newThisMonth.toLocaleString('en-IN')} />
+            </div>
 
             <FilterBar>
                 <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search name, phone, email…" />
@@ -209,37 +155,26 @@ export default function CustomersPage() {
                 />
             </FilterBar>
 
-            <TableCard footer={<Pager page={page} totalPages={meta.totalPages} total={meta.total} pageSize={PAGE_SIZE} count={rows.length} onPage={setPage} noun={tab === 'customers' ? 'customers' : 'staff'} />}>
+            <TableCard footer={<Pager page={page} totalPages={meta.totalPages} total={meta.total} pageSize={PAGE_SIZE} count={rows.length} onPage={setPage} noun="customers" />}>
                 <table className={`w-full ${isFetching && !isLoading ? 'opacity-60' : ''}`}>
                     <thead>
-                        {tab === 'customers' ? (
-                            <tr>
-                                <th className={`${TH} w-12`}>#</th>
-                                <th className={TH}>Customer</th>
-                                <th className={TH}>Status</th>
-                                <th className={`${TH} text-right`} title="Orders placed, excluding cancelled ones">Orders</th>
-                                <th className={`${TH} text-right`} title="Total of delivered orders">Spent</th>
-                                <th className={`${TH} text-right`}>Points</th>
-                                <th className={TH}>Discount</th>
-                                <th className={TH}>Joined</th>
-                                <th className={`${TH} w-12`} />
-                            </tr>
-                        ) : (
-                            <tr>
-                                <th className={`${TH} w-12`}>#</th>
-                                <th className={TH}>Name</th>
-                                <th className={TH}>Role</th>
-                                <th className={TH}>Status</th>
-                                <th className={TH}>Joined</th>
-                                <th className={`${TH} w-12`} />
-                            </tr>
-                        )}
+                        <tr>
+                            <th className={`${TH} w-12`}>#</th>
+                            <th className={TH}>Customer</th>
+                            <th className={TH}>Status</th>
+                            <th className={`${TH} text-right`} title="Orders placed, excluding cancelled ones">Orders</th>
+                            <th className={`${TH} text-right`} title="Total of delivered orders">Spent</th>
+                            <th className={`${TH} text-right`}>Points</th>
+                            <th className={TH}>Discount</th>
+                            <th className={TH}>Joined</th>
+                            <th className={`${TH} w-12`} />
+                        </tr>
                     </thead>
                     <tbody>
-                        {isLoading ? <SkeletonRows cols={cols} /> : rows.length === 0 ? (
-                            <EmptyRow colSpan={cols}>
+                        {isLoading ? <SkeletonRows cols={COLS} /> : rows.length === 0 ? (
+                            <EmptyRow colSpan={COLS}>
                                 <LuUsers size={28} className="mx-auto mb-2 text-gray-300" />
-                                {search || status !== 'all' ? 'Nobody matches these filters.' : tab === 'customers' ? 'No customers yet.' : 'No staff accounts.'}
+                                {search || status !== 'all' ? 'Nobody matches these filters.' : 'No customers yet.'}
                             </EmptyRow>
                         ) : rows.map((u, i) => {
                             const n = (page - 1) * PAGE_SIZE + i + 1;
@@ -249,7 +184,7 @@ export default function CustomersPage() {
                                 ? { label: 'Unblock', icon: <LuCircleCheck size={15} />, onClick: () => handleToggleBlock(u), hidden: !canBlock(u) }
                                 : { label: 'Block', icon: <LuBan size={15} />, onClick: () => handleToggleBlock(u), danger: true, hidden: !canBlock(u) };
 
-                            return tab === 'customers' ? (
+                            return (
                                 <tr key={u._id} className={TR}>
                                     <td className={`${TD} text-gray-400`}>{n}</td>
                                     <td className={TD}>
@@ -266,33 +201,6 @@ export default function CustomersPage() {
                                         <RowMenu items={[
                                             { label: 'View details', icon: <LuEye size={15} />, href: `/dashboard/admin/customers/${u._id}` },
                                             { label: 'Points & discount', icon: <LuPencil size={15} />, onClick: () => openLoyalty(u) },
-                                            blockItem,
-                                        ]} />
-                                    </td>
-                                </tr>
-                            ) : (
-                                <tr key={u._id} className={TR}>
-                                    <td className={`${TD} text-gray-400`}>{n}</td>
-                                    <td className={TD}>
-                                        <p className="font-medium text-gray-900">{fullName}</p>
-                                        <p className="mt-0.5 text-xs text-gray-400">{u.email}</p>
-                                    </td>
-                                    <td className={TD}>
-                                        {isSuperadmin && u.role !== 'superadmin' ? (
-                                            <BadgeSelect
-                                                ariaLabel="Role"
-                                                tone="purple"
-                                                value={u.role}
-                                                onChange={(r) => handleRoleChange(u, r)}
-                                                options={[{ value: 'admin', label: 'Admin' }, { value: 'editor', label: 'Editor' }, { value: 'user', label: 'Customer' }]}
-                                            />
-                                        ) : <Badge tone="purple">{ROLE_LABEL[u.role] || u.role}</Badge>}
-                                    </td>
-                                    <td className={TD}>{statusBadge}</td>
-                                    <td className={`${TD} whitespace-nowrap text-gray-500`}>{fmtDate(u.createdAt)}</td>
-                                    <td className={`${TD} text-right`}>
-                                        <RowMenu items={[
-                                            { label: 'View details', icon: <LuEye size={15} />, href: `/dashboard/admin/customers/${u._id}` },
                                             blockItem,
                                         ]} />
                                     </td>
@@ -354,43 +262,6 @@ export default function CustomersPage() {
                     </Field>
                     <Field label="Default discount (%)">
                         <input className={INPUT} type="number" min={0} max={100} step="0.5" value={lForm.defaultDiscount} onChange={(e) => setLForm({ ...lForm, defaultDiscount: e.target.value })} />
-                    </Field>
-                </div>
-            </Modal>
-
-            {/* ═══ Add staff: admin or editor (superadmin) ═══ */}
-            <Modal
-                open={adminOpen}
-                onClose={() => setAdminOpen(false)}
-                title="Add staff"
-                subtitle={ROLE_HINT[aForm.role]}
-                footer={<>
-                    <Btn onClick={() => setAdminOpen(false)}>Cancel</Btn>
-                    <Btn variant="primary" onClick={handleCreateAdmin} disabled={isCreatingAdmin}>{isCreatingAdmin ? 'Creating…' : `Create ${ROLE_LABEL[aForm.role].toLowerCase()}`}</Btn>
-                </>}
-            >
-                <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Role" required className="sm:col-span-2">
-                        <Segmented
-                            value={aForm.role}
-                            onChange={(r) => setAForm({ ...aForm, role: r })}
-                            options={[{ value: 'admin', label: 'Admin' }, { value: 'editor', label: 'Editor' }]}
-                        />
-                    </Field>
-                    <Field label="First name" required>
-                        <input className={INPUT} value={aForm.firstName} onChange={(e) => setAForm({ ...aForm, firstName: e.target.value })} />
-                    </Field>
-                    <Field label="Last name">
-                        <input className={INPUT} value={aForm.lastName} onChange={(e) => setAForm({ ...aForm, lastName: e.target.value })} />
-                    </Field>
-                    <Field label="Email" required className="sm:col-span-2">
-                        <input className={INPUT} type="email" value={aForm.email} onChange={(e) => setAForm({ ...aForm, email: e.target.value })} />
-                    </Field>
-                    <Field label="Phone">
-                        <input className={INPUT} value={aForm.phone} onChange={(e) => setAForm({ ...aForm, phone: e.target.value })} />
-                    </Field>
-                    <Field label="Password" required hint="At least 6 characters.">
-                        <input className={INPUT} type="password" value={aForm.password} onChange={(e) => setAForm({ ...aForm, password: e.target.value })} />
                     </Field>
                 </div>
             </Modal>

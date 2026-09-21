@@ -69,12 +69,28 @@ const UserService = {
                 User.countDocuments({ role: 'user', createdAt: { $gte: monthStart } }),
             ]);
 
-        const newUsersThisMonth = await User.countDocuments({ createdAt: { $gte: monthStart } });
+        const [newUsersThisMonth, staffByRole, staffBlocked] = await Promise.all([
+            User.countDocuments({ createdAt: { $gte: monthStart } }),
+            User.aggregate([
+                { $match: { role: { $in: ['superadmin', 'admin', 'editor'] } } },
+                { $group: { _id: '$role', n: { $sum: 1 } } },
+            ]),
+            User.countDocuments({ role: { $in: ['superadmin', 'admin', 'editor'] }, status: 'blocked' }),
+        ]);
+        const roleCount = (r: string) => staffByRole.find((s: { _id: string }) => s._id === r)?.n || 0;
 
         return {
             total, active, blocked, admins, users: total - admins, newUsersThisMonth,
             // Buyers only — what the Customers page shows.
             customers: { total: customers, active: activeCustomers, blocked: blockedCustomers, newThisMonth: newCustomersThisMonth },
+            // Admin-panel accounts, per role — what the Staff page shows.
+            staff: {
+                total: admins,
+                superadmin: roleCount('superadmin'),
+                admin: roleCount('admin'),
+                editor: roleCount('editor'),
+                blocked: staffBlocked,
+            },
         };
     },
 
