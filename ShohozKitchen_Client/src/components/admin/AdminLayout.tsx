@@ -16,8 +16,11 @@ import {
 } from 'react-icons/lu';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import Logo from '@/components/shared/Logo';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
+import { logout } from '@/redux/slices/authSlice';
+import { useLogoutMutation } from '@/redux/api/authApi';
+import { baseApi } from '@/redux/api/baseApi';
 import { ADMIN_ROOT, ROLE_LABEL, canOpen, homeFor } from './access';
 
 interface AdminLayoutProps { children: React.ReactNode; }
@@ -253,7 +256,17 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         });
     };
 
-    const handleLogout = () => { localStorage.removeItem('token'); router.push('/'); };
+    // A real sign-out: clear the signed-in user from the app (removing the saved
+    // token alone left Redux still holding them, so nothing looked signed out),
+    // drop cached admin data, and have the server clear its refresh cookie.
+    const dispatch = useDispatch();
+    const [serverLogout] = useLogoutMutation();
+    const handleLogout = () => {
+        serverLogout(undefined).unwrap().catch(() => {});
+        dispatch(logout());
+        dispatch(baseApi.util.resetApiState());
+        router.replace('/login');
+    };
 
     const crumbs = buildCrumbs(pathname);
     const name = user?.name?.trim() || 'Admin';
