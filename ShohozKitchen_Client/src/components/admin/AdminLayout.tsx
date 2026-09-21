@@ -111,7 +111,6 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
         label: 'Settings',
         items: [
             { name: 'Store settings', href: '/dashboard/admin/settings', icon: LuSettings },
-            { name: 'Shipping', href: '/dashboard/admin/shipping', icon: LuTruck },
             { name: 'Site content', href: '/dashboard/admin/site-content', icon: LuLayoutTemplate },
             // Super admin only (access.ts): add admins and editors, change roles.
             { name: 'Staff', href: '/dashboard/admin/staff', icon: LuUserCog },

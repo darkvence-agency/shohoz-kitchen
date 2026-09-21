@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { LuArrowUpRight, LuMapPin } from 'react-icons/lu';
+import { LuMapPin } from 'react-icons/lu';
 import {
     useGetShippingSettingsQuery,
     useUpdateShippingSettingsMutation,
@@ -14,14 +13,13 @@ import { Btn, Card, Field, Toggle, taka } from '@/components/admin/ui';
 import { CardSkeleton, Note, SaveRow, UnitInput } from './parts';
 import { apiError, bpsToPercentText, parseMoney, parsePercentToBps } from './helpers';
 
-const SHIPPING_PAGE = '/dashboard/admin/shipping';
 const DEFAULT_COD_BPS = 100; // mirrors DEFAULT_COD_CHARGE_BPS on the server (1%)
 const EXAMPLE_PARCEL = 1000; // ৳ collected, for the worked example under the rate
 
 /**
  * Settings → Business: the courier COD charge and the customer delivery charge.
- * Both cards read and write the shipping-settings singleton, the same record the
- * Shipping & Zones page edits, so the two pages always agree.
+ * Both cards read and write the shipping-settings singleton. This is the only place
+ * the delivery charges are set — there is no separate Shipping page any more.
  */
 export default function BusinessSettings() {
     const { data: settings, isLoading, isFetching, isError, refetch } = useGetShippingSettingsQuery();
@@ -44,7 +42,7 @@ export default function BusinessSettings() {
 
     const codBps = settings.codChargeBps ?? DEFAULT_COD_BPS;
     // Each card is keyed on the server values it edits: when fresh values arrive
-    // (after its own save, or a change made on Shipping & Zones) it resets its
+    // (after its own save, or a save from another tab) it resets its
     // draft, while unsaved edits in the other card are left alone.
     const deliveryKey = [
         settings.defaultInsideDhakaRate, settings.defaultOutsideDhakaRate,
@@ -155,7 +153,7 @@ function DeliveryChargeCard({ settings, syncing }: { settings: ShippingSettings;
         ?? (thresholdOn && threshold.value === 0 ? 'Enter an amount above ৳0, or turn free delivery off' : undefined);
 
     // Only send what changed, so a save here never overwrites a value someone
-    // else just changed on Shipping & Zones.
+    // else just saved from another tab.
     const patch: Partial<ShippingSettings> = {};
     if (inside.value !== undefined && inside.value !== settings.defaultInsideDhakaRate) patch.defaultInsideDhakaRate = inside.value;
     if (outside.value !== undefined && outside.value !== settings.defaultOutsideDhakaRate) patch.defaultOutsideDhakaRate = outside.value;
@@ -190,9 +188,6 @@ function DeliveryChargeCard({ settings, syncing }: { settings: ShippingSettings;
                         <p className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
                             <LuMapPin size={14} className="text-gray-400" /> Zones at checkout
                         </p>
-                        <Link href={SHIPPING_PAGE} className="inline-flex items-center gap-0.5 text-xs font-medium text-[var(--color-primary)] hover:underline">
-                            Edit zones <LuArrowUpRight size={13} />
-                        </Link>
                     </div>
                     <ul className="divide-y divide-gray-100">
                         {zones.map((z) => (
@@ -249,13 +244,6 @@ function DeliveryChargeCard({ settings, syncing }: { settings: ShippingSettings;
                         onChange={(v) => setDraft((d) => ({ ...d, threshold: v }))} />
                 </Field>
             </div>
-
-            <Note className="mt-4">
-                These are the same numbers as{' '}
-                <Link href={SHIPPING_PAGE} className="font-medium text-[var(--color-primary)] hover:underline">Shipping &amp; Zones</Link>
-                {' '}→ Settings, so a change here shows there too. Zones, per-zone rates, delivery time and
-                quantity-based free delivery are managed there.
-            </Note>
 
             <SaveRow
                 canSave={changed && !hasError && !syncing}
