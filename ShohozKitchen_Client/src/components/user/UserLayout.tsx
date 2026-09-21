@@ -10,7 +10,7 @@ import { LogoMark } from '@/components/shared/Logo';
 import {
     FiUser, FiMapPin, FiCreditCard, FiSettings,
     FiShoppingBag, FiRefreshCw, FiSlash, FiFileText,
-    FiStar, FiMessageCircle, FiHeart, FiShoppingCart,
+    FiStar, FiMessageCircle, FiHeart,
     FiLogOut, FiMenu, FiX, FiChevronRight, FiHome, FiArrowLeft,
 } from 'react-icons/fi';
 
@@ -41,8 +41,7 @@ const SECTIONS: MenuSection[] = [
     },
     { title: 'My Reviews', href: '/dashboard/user/reviews', icon: FiStar, standalone: true },
     { title: 'My Messages', href: '/dashboard/user/messages', icon: FiMessageCircle, standalone: true },
-    { title: 'My Wishlist & Followed Stores', href: '/dashboard/user/wishlist', icon: FiHeart, standalone: true },
-    { title: 'Sell On Shohoz Kitchen', href: '/become-seller', icon: FiShoppingCart, standalone: true },
+    { title: 'My Wishlist', href: '/dashboard/user/wishlist', icon: FiHeart, standalone: true },
     { title: 'Account Settings', href: '/dashboard/user/settings', icon: FiSettings, standalone: true },
 ];
 
@@ -97,7 +96,8 @@ const UserLayout = ({ children }: { children: React.ReactNode }) => {
         const label = (link as any).label ?? (link as any).title;
         const Icon = (link as any).icon as React.ElementType;
         const active = isActive(href);
-        const badge = (link as any).badge === 'wishlist' || label === 'My Wishlist & Followed Stores';
+        // Keyed on the address, not the label, so renaming the item can't lose the count.
+        const badge = (link as any).badge === 'wishlist' || href === '/dashboard/user/wishlist';
         return (
             <Link
                 href={href}

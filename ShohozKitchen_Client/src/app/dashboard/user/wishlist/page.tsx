@@ -8,7 +8,6 @@ import {
     FiTrash2,
     FiStar,
     FiEye,
-    FiShoppingBag,
 } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import { useGetWishlistQuery, useToggleWishlistMutation } from '@/redux/api/userApi';
@@ -50,7 +49,7 @@ export default function WishlistPage() {
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="min-w-0">
-                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Wishlist &amp; Followed Stores</h1>
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Wishlist</h1>
                         <p className="text-sm text-gray-400 mt-1">
                             {wishlistItems.length} saved item{wishlistItems.length !== 1 ? 's' : ''}
                         </p>
@@ -182,29 +181,6 @@ export default function WishlistPage() {
                     ))}
                 </div>
             )}
-
-            {/* ── Followed Stores ── */}
-            <div>
-                <div className="flex items-center gap-2 mb-3">
-                    <FiShoppingBag size={18} className="text-[var(--color-primary)]" />
-                    <h2 className="text-lg font-bold text-gray-900">Followed Stores</h2>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-10 shadow-sm text-center">
-                    <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-                        <FiShoppingBag size={24} className="text-[var(--color-primary)]" />
-                    </div>
-                    <h3 className="text-base font-bold text-gray-700 mb-1">You&apos;re not following any stores yet</h3>
-                    <p className="text-sm text-gray-400 mb-5 max-w-md mx-auto">
-                        Follow your favourite stores to get their latest products and offers right here.
-                    </p>
-                    <Link
-                        href="/products"
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--color-primary)] text-white rounded-xl font-semibold text-sm hover:brightness-95 transition-all"
-                    >
-                        <FiShoppingBag size={15} /> Browse Stores
-                    </Link>
-                </div>
-            </div>
         </div>
     );
 }

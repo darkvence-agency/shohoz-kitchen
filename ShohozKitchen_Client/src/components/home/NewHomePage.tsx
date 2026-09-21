@@ -12,7 +12,6 @@ import { FiX, FiSearch } from 'react-icons/fi';
 import HeroSection from './HeroSection';
 import CategoryExpertise from './CategoryExpertise';
 import QualityFeatures from './QualityFeatures';
-import AssociatedProducts from './AssociatedProducts';
 import CtaBanner from './CtaBanner';
 import FlashSale from './FlashSale';
 import DealsRow from './DealsRow';
@@ -382,7 +381,6 @@ const NewHomePage: React.FC = () => {
 
             <QualityFeatures />
 
-            <AssociatedProducts />
             <CtaBanner />
         </div>
     );

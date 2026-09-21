@@ -4,6 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { FiArrowRight, FiShoppingBag } from 'react-icons/fi';
 
+// The home page's closing call to action: one way forward, into the catalogue.
+// (It used to invite people to "Become a Seller" — this is a single store.)
 const CtaBanner: React.FC = () => {
     return (
         <section className="w-full relative overflow-hidden">
@@ -19,31 +21,22 @@ const CtaBanner: React.FC = () => {
             {/* Content */}
             <div className="relative container mx-auto px-4 py-16 text-center">
                 <span className="inline-flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-white/10 text-[11px] font-semibold tracking-[0.18em] uppercase text-white/80">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" /> Join the marketplace
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" /> Shop Shohoz Kitchen
                 </span>
 
                 <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-3 tracking-tight">
-                    Are you prepared to begin?
+                    Everything your kitchen needs
                 </h2>
                 <p className="text-sm md:text-base text-white/75 mb-8 max-w-xl mx-auto leading-relaxed">
-                    Explore thousands of products from trusted sellers — or start your own shop and reach customers across Bangladesh today!
+                    Cookware, dinnerware and kitchen tools at honest prices — delivered to your door anywhere in Bangladesh.
                 </p>
 
-                {/* Buttons */}
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                    <Link
-                        href="/register"
-                        className="inline-flex items-center justify-center gap-2 bg-white text-[var(--color-primary)] font-bold text-sm px-7 py-3 rounded-md hover:bg-slate-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 w-full sm:w-auto"
-                    >
-                        Join Shohoz Kitchen <FiArrowRight size={16} />
-                    </Link>
-                    <Link
-                        href="/sell-with-us"
-                        className="inline-flex items-center justify-center gap-2 bg-transparent text-white font-bold text-sm px-7 py-3 rounded-md border border-white/40 hover:bg-white/10 hover:border-white/70 transition-all duration-300 hover:-translate-y-0.5 w-full sm:w-auto"
-                    >
-                        <FiShoppingBag size={16} /> Become a Seller
-                    </Link>
-                </div>
+                <Link
+                    href="/products"
+                    className="inline-flex items-center justify-center gap-2 bg-white text-[var(--color-primary)] font-bold text-sm px-8 py-3.5 rounded-md hover:bg-slate-100 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 w-full sm:w-auto"
+                >
+                    <FiShoppingBag size={16} /> Shop all products <FiArrowRight size={16} />
+                </Link>
             </div>
         </section>
     );
