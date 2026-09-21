@@ -11,7 +11,7 @@ import {
     LuStore, LuTruck, LuWarehouse, LuBoxes, LuArrowLeftRight,
     LuReceipt, LuHandCoins, LuWallet, LuSettings, LuActivity,
     LuZap, LuCreditCard, LuLayoutTemplate, LuUser, LuUserCog, LuShield,
-    LuMessageSquare, LuMessagesSquare, LuChartLine, LuTarget, LuSearch, LuGlobe,
+    LuMessageSquare, LuChartLine, LuTarget, LuSearch, LuGlobe,
     LuPanelLeft, LuChevronRight, LuLogOut, LuX,
 } from 'react-icons/lu';
 import NotificationBell from '@/components/notifications/NotificationBell';
@@ -77,7 +77,6 @@ const menuSections: { label: string; items: MenuItem[] }[] = [
         items: [
             { name: 'Customers', href: '/dashboard/admin/customers', icon: LuUsers },
             { name: 'Inquiries', href: '/dashboard/admin/inquiries', icon: LuMessageSquare },
-            { name: 'Support messages', href: '/dashboard/admin/messages', icon: LuMessagesSquare },
         ],
     },
     {
