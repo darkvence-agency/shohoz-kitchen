@@ -9,8 +9,6 @@ import NewProductCard from '@/components/shared/NewProductCard';
 import { useGetProductsQuery } from '@/redux/api/productApi';
 import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
 import { FiX, FiSearch } from 'react-icons/fi';
-import HeroSection from './HeroSection';
-import CategoryExpertise from './CategoryExpertise';
 import QualityFeatures from './QualityFeatures';
 import CtaBanner from './CtaBanner';
 import FlashSale from './FlashSale';
@@ -121,10 +119,10 @@ const NewHomePage: React.FC = () => {
 
     // Loading skeleton
     if (isLoading) {
+        // The hero and category row are rendered by the page above this one, so
+        // that they reach the browser in the server HTML — see app/(main)/page.tsx.
         return (
-            <div className="min-h-screen bg-gray-50">
-                <HeroSection />
-                <CategoryExpertise />
+            <div>
                 <div className="w-full mx-auto px-2 sm:px-4 py-4 sm:py-6">
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
                         {[...Array(10)].map((_, i) => (
@@ -143,17 +141,7 @@ const NewHomePage: React.FC = () => {
     }
 
     return (
-        <div
-            className="min-h-screen"
-            style={{
-                background:
-                    'radial-gradient(55% 45% at 88% 0%, rgba(var(--color-primary-rgb), 0.06), transparent 70%),' +
-                    'radial-gradient(45% 40% at 0% 22%, rgba(var(--color-primary-rgb), 0.04), transparent 70%),' +
-                    '#F8FAFC',
-            }}
-        >
-            <HeroSection />
-            <CategoryExpertise />
+        <div>
             {!searchTerm && !selectedCategory && (
                 <>
                     <FlashSale />
