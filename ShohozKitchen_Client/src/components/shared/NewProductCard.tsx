@@ -49,7 +49,7 @@ interface NewProductCardProps {
     product: Product;
 }
 
-const PRODUCT_IMAGE_FALLBACK = '/images/placeholder-product.webp';
+export const PRODUCT_IMAGE_FALLBACK = '/images/placeholder-product.webp';
 
 const formatCount = (n: number): string => {
     if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'K';
