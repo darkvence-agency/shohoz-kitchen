@@ -161,7 +161,10 @@ const productSchema = new Schema(
 );
 
 // ── Indexes ────────────────────────────────────────────────
-productSchema.index({ name: 'text', description: 'text', tags: 'text' });
+// No text index: search goes through QueryBuilder.search(), which builds
+// case-insensitive $regex conditions and never issues $text. Carrying one
+// anyway meant Mongo rebuilt term postings for name, description and tags on
+// every write, and held them in cache, for a query shape that is never run.
 productSchema.index({ category: 1, status: 1 });
 productSchema.index({ subCategory: 1, status: 1 });
 productSchema.index({ childCategory: 1, status: 1 });
