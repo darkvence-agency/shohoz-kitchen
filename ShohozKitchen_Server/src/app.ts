@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
 import notFoundHandler from './app/middlewares/notFoundHandler';
 import config from './app/config';
-import { uploadsDir } from './app/utils/cloudinary';
+import { uploadsDir } from './app/utils/fileUpload';
 
 // ── Route Imports ────────────────────────────────────────────────
 import { AuthRoutes } from './app/modules/auth/auth.routes';

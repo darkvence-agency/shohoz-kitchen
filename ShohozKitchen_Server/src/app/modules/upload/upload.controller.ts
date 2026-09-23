@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
-import { fileToUrl } from '../../utils/cloudinary';
+import { fileToUrl } from '../../utils/fileUpload';
 
 // POST /api/upload/image   — single image
 // POST /api/upload/images  — multiple images (max 10)
@@ -12,7 +12,7 @@ export const uploadController = {
         if (!req.file) {
             return res.status(400).json({ success: false, message: 'No file uploaded' });
         }
-        const url = fileToUrl(req, req.file as Express.Multer.File); // live Cloudinary URL if enabled, otherwise local disk URL
+        const url = fileToUrl(req, req.file as Express.Multer.File);
         sendResponse(res, {
             statusCode: 200,
             success: true,

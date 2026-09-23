@@ -34,10 +34,6 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "res.cloudinary.com",
-      },
-      {
-        protocol: "https",
         hostname: "picsum.photos",
       },
       // Production domain (uploaded images are served from the same origin).

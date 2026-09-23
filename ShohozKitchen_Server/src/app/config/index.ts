@@ -17,11 +17,9 @@ export default {
 
     bcrypt_salt_rounds: Number(process.env.BCRYPT_SALT_ROUNDS) || 12,
 
-    cloudinary: {
-        cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '',
-        api_key: process.env.CLOUDINARY_API_KEY || '',
-        api_secret: process.env.CLOUDINARY_API_SECRET || '',
-    },
+    // Uploaded images are written here and served from /uploads. Point this at a
+    // persistent volume in the hosting, or a redeploy wipes every upload.
+    upload_dir: process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'),
 
     email: {
         host: process.env.EMAIL_HOST || 'smtp.gmail.com',

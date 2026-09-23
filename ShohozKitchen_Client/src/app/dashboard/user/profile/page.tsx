@@ -39,7 +39,7 @@ export default function ProfilePage() {
         if (user) setForm({ name: user.name || '', phone: user.phone || '' });
     }, [user]);
 
-    // ── Avatar upload (real — Cloudinary via /upload/my-images) ──
+    // ── Avatar upload (real — server disk via /upload/my-images) ──
     const pickAvatar = () => fileRef.current?.click();
     const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];

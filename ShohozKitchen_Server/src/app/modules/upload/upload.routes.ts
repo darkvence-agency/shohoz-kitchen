@@ -1,5 +1,5 @@
 import express from 'express';
-import { upload } from '../../utils/cloudinary';
+import { upload } from '../../utils/fileUpload';
 import { uploadController } from './upload.controller';
 
 const router = express.Router();
