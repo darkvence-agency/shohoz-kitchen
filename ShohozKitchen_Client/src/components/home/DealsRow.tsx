@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useGetActiveOffersQuery } from '@/redux/api/offerApi';
 import SectionHeader from './SectionHeader';
 
@@ -32,11 +33,13 @@ const DealCard: React.FC<{ p: any }> = ({ p }) => {
         >
             <div className="relative aspect-square bg-gray-50 overflow-hidden">
                 {img ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                         src={img}
                         alt={p.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        fill
+                        // The tile is 120-140px wide, so never ship the full source.
+                        sizes="140px"
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs">No image</div>
