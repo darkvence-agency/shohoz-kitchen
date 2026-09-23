@@ -13,8 +13,6 @@
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.2",
-    "@tensorflow-models/mobilenet": "^2.1.1",
-    "@tensorflow/tfjs": "^4.22.0",
     "next": "16.1.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
