@@ -8,7 +8,13 @@ const SiteContentController = {
     // GET /api/site-content — Public
     get: catchAsync(async (req: Request, res: Response) => {
         const content = await SiteContentService.get();
-        sendResponse(res, { statusCode: 200, success: true, message: 'Site content fetched', data: content });
+        // Every page load fetches this. `legalPages` holds the complete HTML of the
+        // Terms, Privacy and Refund pages — tens of kilobytes that nothing reading
+        // this response uses: those pages load from /site-content/legal/:slug, and
+        // the admin editor lists them from /site-content/legal.
+        const data = { ...((content as any)?.toObject?.() ?? content ?? {}) };
+        delete data.legalPages;
+        sendResponse(res, { statusCode: 200, success: true, message: 'Site content fetched', data });
     }),
 
     // PUT /api/site-content — Admin only (full update)
