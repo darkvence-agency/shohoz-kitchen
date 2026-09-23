@@ -16,6 +16,24 @@ const nextConfig: NextConfig = {
       { source: "/seller/:path*", destination: "/dashboard/seller/:path*", permanent: false },
     ];
   },
+  async headers() {
+    // Files under public/ are served with `max-age=0` by default, so the browser
+    // re-validates every one of them on every page load. From Dhaka that round
+    // trip measures ~0.69s per image even when the answer is 304. These are brand
+    // assets that change rarely — when one does change, give the file a new name
+    // (as with hero-01.webp) rather than overwriting it.
+    return [
+      {
+        source: "/:path(categories|images)/:file*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=2592000" }],
+      },
+      {
+        // The logo sits at the public root and loads in the header of every page.
+        source: "/:file(logo|logo-mark).svg",
+        headers: [{ key: "Cache-Control", value: "public, max-age=2592000" }],
+      },
+    ];
+  },
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${INTERNAL_API}/api/:path*` },
