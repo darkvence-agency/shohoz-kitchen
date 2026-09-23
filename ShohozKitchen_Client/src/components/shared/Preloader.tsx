@@ -1,10 +1,40 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useLayoutEffect, useRef } from 'react';
 import Logo from '@/components/shared/Logo';
 
 const PRIMARY = 'var(--color-primary)';
 const DARK    = '#111827';
+
+// The preloader greets a visitor once, on the first page they open, and stays out
+// of the way for the rest of the visit. `PRELOADER_SEEN_KEY` is also read by the
+// inline script in app/layout.tsx, which hides the markup before first paint —
+// keep the two in step.
+export const PRELOADER_SEEN_KEY = 'shohozkitchen:preloaded';
+
+// Once the page itself has loaded, how long to keep waiting for the homepage's
+// `shohozkitchen:dataReady` cue before leaving anyway.
+const DATA_GRACE_MS = 1200;
+// Hard ceiling, in case neither signal ever arrives.
+const SAFETY_MS = 4000;
+
+// sessionStorage throws in some privacy modes; a visitor who cannot be remembered
+// simply sees the preloader again, which is the harmless outcome.
+function hasShownThisSession(): boolean {
+    try {
+        return window.sessionStorage.getItem(PRELOADER_SEEN_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function markShownThisSession(): void {
+    try {
+        window.sessionStorage.setItem(PRELOADER_SEEN_KEY, '1');
+    } catch {
+        /* ignore — see above */
+    }
+}
 
 /* ─── Delivery Truck (faces right, orange body + dark cab) ─── */
 const TruckIcon: React.FC<{ moving: boolean }> = ({ moving }) => {
@@ -73,7 +103,21 @@ const Preloader: React.FC = () => {
     const dataReadyRef  = useRef(false);
     const finishedRef   = useRef(false);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
+        // Shown once per visit, on the first page the visitor opens. Every later
+        // page load in the same session skips it entirely — the inline script in
+        // the document head (see app/layout.tsx) has already hidden the markup by
+        // the time we get here, so this only has to agree with it.
+        if (hasShownThisSession()) {
+            // Deliberate: the overlay is server-rendered so that a first-time visitor
+            // sees it immediately, which means the decision to skip it can only be
+            // made here, on the client, where sessionStorage exists.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setIsLoading(false);
+            return;
+        }
+        markShownThisSession();
+
         const markPage = () => { pageLoadedRef.current = true; };
         if (document.readyState === 'complete') pageLoadedRef.current = true;
         else window.addEventListener('load', markPage);
@@ -91,6 +135,15 @@ const Preloader: React.FC = () => {
             }, 600);
         };
 
+        // `shohozkitchen:dataReady` is dispatched by the homepage once its products
+        // and categories have arrived. It is the ideal cue, but only the homepage
+        // sends it — so once the page itself has loaded we give it a short grace
+        // period and then leave regardless, instead of waiting out the safety net.
+        let grace: ReturnType<typeof setTimeout> | undefined;
+        const startGrace = () => {
+            if (grace === undefined) grace = setTimeout(finish, DATA_GRACE_MS);
+        };
+
         const tick = setInterval(() => {
             setProgress(prev => {
                 if (finishedRef.current) return prev;
@@ -100,16 +153,18 @@ const Preloader: React.FC = () => {
                     if (next >= 100) { clearInterval(tick); finish(); return 100; }
                     return next;
                 }
+                if (pageLoadedRef.current) startGrace();
                 const ceiling = pageLoadedRef.current ? 85 : dataReadyRef.current ? 60 : 80;
                 if (prev >= ceiling) return ceiling;
                 return prev + Math.max(1.2, (ceiling - prev) * 0.09);
             });
         }, 75);
 
-        const safety = setTimeout(finish, 10000);
+        const safety = setTimeout(finish, SAFETY_MS);
         return () => {
             clearInterval(tick);
             clearTimeout(safety);
+            if (grace !== undefined) clearTimeout(grace);
             window.removeEventListener('load', markPage);
             window.removeEventListener('shohozkitchen:dataReady', markData);
         };
@@ -128,6 +183,7 @@ const Preloader: React.FC = () => {
 
     return (
         <div
+            id="shohoz-preloader"
             className={`fixed inset-0 z-[99999] flex items-center justify-center transition-all duration-700 ease-out ${fadeOut ? 'opacity-0 scale-[1.015]' : 'opacity-100 scale-100'}`}
             style={{
                 background: 'linear-gradient(160deg, var(--color-primary-surface) 0%, #ffffff 45%, #ffffff 100%)',

@@ -72,6 +72,20 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+        {/* The preloader greets a visitor once, on the first page they open. The
+            markup is server-rendered, so on every later page load of the same visit
+            it would sit on screen until React hydrates and removes it. This runs
+            before first paint and hides it outright. Key kept in step with
+            PRELOADER_SEEN_KEY in components/shared/Preloader.tsx. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{if(sessionStorage.getItem('shohozkitchen:preloaded')==='1'){" +
+              "var s=document.createElement('style');" +
+              "s.textContent='#shohoz-preloader{display:none!important}';" +
+              'document.head.appendChild(s)}}catch(e){}',
+          }}
+        />
       </head>
       <body>
         <ReduxProvider>
