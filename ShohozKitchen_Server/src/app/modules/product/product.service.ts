@@ -9,6 +9,30 @@ import { logStockMovements } from '../inventory/inventory.ledger';
 // Public product responses never include it.
 const HIDE_COST = '-costPrice';
 
+// Fields no storefront card renders, dropped from public *list* responses.
+// A listing exists to draw cards; the detail page fetches the whole document by
+// slug, and the cart fetches it by id, so nothing loses data here. Between them
+// these are most of a product's bytes — `description` is unbounded prose and
+// every entry in `variants` carries its own images, description and note.
+const LIST_ONLY_EXCLUDE = [
+    '-description',
+    '-variants',
+    '-specifications',
+    '-highlights',
+    '-insideTheBox',
+    '-aiLabels',
+    '-metaTitle',
+    '-metaDescription',
+    '-metaKeywords',
+    '-deliveryInfo',
+    '-paymentInfo',
+    '-termsInfo',
+    '-boxSize',
+    '-dimensions',
+    '-warranty',
+    '-shippingInfo',
+].join(',');
+
 /**
  * A `?fields=` projection that can never reveal costPrice. Inclusion lists simply lose
  * the costPrice token; exclusion lists (and the default) also exclude it.
@@ -18,9 +42,11 @@ function publicFields(raw: unknown): string {
         .split(/[,\s]+/)
         .map((t) => t.trim())
         .filter((t) => t && !/^[+-]?costPrice$/i.test(t));
-    if (tokens.length === 0) return `-__v,${HIDE_COST}`;
+    if (tokens.length === 0) return `-__v,${HIDE_COST},${LIST_ONLY_EXCLUDE}`;
     const exclusion = tokens.every((t) => t.startsWith('-'));
-    return exclusion ? [...tokens, HIDE_COST].join(',') : tokens.join(',');
+    // An explicit inclusion list is honoured as-is — a caller asking for
+    // `fields=name,description` still gets the description.
+    return exclusion ? [...tokens, HIDE_COST, LIST_ONLY_EXCLUDE].join(',') : tokens.join(',');
 }
 
 /**
@@ -262,7 +288,7 @@ const ProductService = {
             const limit = Number(query?.limit) || 10;
             const skip = (page - 1) * limit;
             productQuery.modelQuery = productQuery.modelQuery.sort(sort).skip(skip).limit(limit);
-            if (!staff) productQuery.modelQuery = productQuery.modelQuery.select(HIDE_COST);
+            if (!staff) productQuery.modelQuery = productQuery.modelQuery.select(`${HIDE_COST},${LIST_ONLY_EXCLUDE}`);
         }
 
         const products = await productQuery.modelQuery;
