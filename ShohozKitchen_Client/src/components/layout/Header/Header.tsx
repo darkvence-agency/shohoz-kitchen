@@ -33,14 +33,14 @@ const isCatImg = (c: Category) => Boolean(c.image || (c.icon && (c.icon.startsWi
 const getCatImg = (c: Category) => c.image || c.icon || '';
 
 const FALLBACK_CATEGORIES: Category[] = [
-    { _id: 'f-cookware',      name: 'Cookware',       slug: 'cookware',       icon: '🍳', image: '/categories/cookware.png' },
-    { _id: 'f-dinnerware',    name: 'Dinnerware',     slug: 'dinnerware',     icon: '🍽️', image: '/categories/dinnerware.png' },
-    { _id: 'f-kitchen-tools', name: 'Kitchen Tools',  slug: 'kitchen-tools',  icon: '🔪', image: '/categories/kitchen-tools.png' },
-    { _id: 'f-food-storage',  name: 'Food Storage',   slug: 'food-storage',   icon: '🫙', image: '/categories/food-storage.png' },
-    { _id: 'f-appliances',    name: 'Appliances',     slug: 'appliances',     icon: '⚡', image: '/categories/appliances.png' },
-    { _id: 'f-bakeware',      name: 'Bakeware',       slug: 'bakeware',       icon: '🧁', image: '/categories/bakeware.png' },
-    { _id: 'f-drinkware',     name: 'Drinkware',      slug: 'drinkware',      icon: '🥤', image: '/categories/drinkware.png' },
-    { _id: 'f-cutlery',       name: 'Cutlery',        slug: 'cutlery',        icon: '🍴', image: '/categories/cutlery.png' },
+    { _id: 'f-cookware',      name: 'Cookware',       slug: 'cookware',       icon: '🍳', image: '/categories/cookware.webp' },
+    { _id: 'f-dinnerware',    name: 'Dinnerware',     slug: 'dinnerware',     icon: '🍽️', image: '/categories/dinnerware.webp' },
+    { _id: 'f-kitchen-tools', name: 'Kitchen Tools',  slug: 'kitchen-tools',  icon: '🔪', image: '/categories/kitchen-tools.webp' },
+    { _id: 'f-food-storage',  name: 'Food Storage',   slug: 'food-storage',   icon: '🫙', image: '/categories/food-storage.webp' },
+    { _id: 'f-appliances',    name: 'Appliances',     slug: 'appliances',     icon: '⚡', image: '/categories/appliances.webp' },
+    { _id: 'f-bakeware',      name: 'Bakeware',       slug: 'bakeware',       icon: '🧁', image: '/categories/bakeware.webp' },
+    { _id: 'f-drinkware',     name: 'Drinkware',      slug: 'drinkware',      icon: '🥤', image: '/categories/drinkware.webp' },
+    { _id: 'f-cutlery',       name: 'Cutlery',        slug: 'cutlery',        icon: '🍴', image: '/categories/cutlery.webp' },
 ];
 
 const Header: React.FC = () => {

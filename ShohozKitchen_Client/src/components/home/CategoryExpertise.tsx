@@ -55,14 +55,14 @@ function resolveIcon(name: string, dbIcon?: string): string {
 }
 
 const LOCAL_CATEGORY_IMAGES: Record<string, string> = {
-    cookware: '/categories/cookware.png',
-    dinnerware: '/categories/dinnerware.png',
-    'kitchen-tools': '/categories/kitchen-tools.png',
-    'food-storage': '/categories/food-storage.png',
-    appliances: '/categories/appliances.png',
-    bakeware: '/categories/bakeware.png',
-    drinkware: '/categories/drinkware.png',
-    cutlery: '/categories/cutlery.png',
+    cookware: '/categories/cookware.webp',
+    dinnerware: '/categories/dinnerware.webp',
+    'kitchen-tools': '/categories/kitchen-tools.webp',
+    'food-storage': '/categories/food-storage.webp',
+    appliances: '/categories/appliances.webp',
+    bakeware: '/categories/bakeware.webp',
+    drinkware: '/categories/drinkware.webp',
+    cutlery: '/categories/cutlery.webp',
 };
 
 const FALLBACK_CATEGORIES: Category[] = [
