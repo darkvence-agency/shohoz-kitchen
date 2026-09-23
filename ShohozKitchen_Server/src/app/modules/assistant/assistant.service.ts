@@ -8,6 +8,7 @@
  */
 import config from '../../config';
 import { TOOL_DEFS, AssistantTools } from './assistant.tools';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 
 const SYSTEM_PROMPT = `You are ShohozBot, the friendly and professional AI shopping assistant for Shohoz Kitchen — an online kitchen store in Bangladesh. Currency is BDT (৳). Shohoz Kitchen delivers across Bangladesh and offers Cash on Delivery.
 
@@ -30,7 +31,7 @@ interface XaiMessage {
 }
 
 async function xaiChat(messages: any[], useTools: boolean): Promise<XaiMessage> {
-    const res = await fetch(`${config.grok.base_url}/chat/completions`, {
+    const res = await fetchWithTimeout(`${config.grok.base_url}/chat/completions`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

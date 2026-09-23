@@ -9,6 +9,7 @@
  * 5. Set env variables: WHATSAPP_API_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ADMIN_PHONE
  */
 
+import { fetchWithTimeout } from './fetchWithTimeout';
 const WHATSAPP_API_URL = 'https://graph.facebook.com/v18.0';
 
 interface WhatsAppConfig {
@@ -30,7 +31,7 @@ function getConfig(): WhatsAppConfig | null {
 
 async function sendWhatsAppMessage(phone: string, message: string, config: WhatsAppConfig): Promise<boolean> {
     try {
-        const response = await fetch(`${WHATSAPP_API_URL}/${config.phoneNumberId}/messages`, {
+        const response = await fetchWithTimeout(`${WHATSAPP_API_URL}/${config.phoneNumberId}/messages`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${config.token}`,

@@ -18,9 +18,19 @@ interface SocketAuthPayload extends JwtPayload {
  * - Supports joining conversation rooms and relaying typing events.
  */
 export const initSocket = (httpServer: HttpServer): SocketIOServer => {
+    // Same origin allowlist Express uses — `origin: true` reflected whatever the
+    // caller sent, which left the socket endpoint open to any site while the REST
+    // API was locked down. Development stays permissive.
+    const allowedOrigins = [...config.cors_origins, config.frontend_url, 'http://localhost:3000', 'http://localhost:3001']
+        .filter(Boolean)
+        .map((origin) => origin.replace(/\/+$/, ''));
+
     io = new SocketIOServer(httpServer, {
         cors: {
-            origin: true,
+            origin: (origin, callback) => {
+                if (!origin || config.env !== 'production') return callback(null, true);
+                callback(null, allowedOrigins.includes(origin.replace(/\/+$/, '')));
+            },
             credentials: true,
             methods: ['GET', 'POST'],
         },

@@ -1,5 +1,6 @@
 import config from '../../config';
 import AppError from '../../utils/AppError';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 
 // ── Steadfast Courier (Packzy) API wrapper ───────────────────────────
 // Docs: https://docs.google.com/document/d/1Pn... (Steadfast merchant API / Packzy)
@@ -36,7 +37,7 @@ const SteadfastService = {
     // POST /create_order → { status, message, consignment: { consignment_id, tracking_code, status, ... } }
     async createConsignment(input: CreateConsignmentInput) {
         ensureConfigured();
-        const res = await fetch(`${base_url}/create_order`, {
+        const res = await fetchWithTimeout(`${base_url}/create_order`, {
             method: 'POST',
             headers: headers(),
             body: JSON.stringify({
@@ -70,7 +71,7 @@ const SteadfastService = {
     // GET /status_by_trackingcode/{code} → { status, delivery_status }
     async getStatusByTrackingCode(trackingCode: string) {
         ensureConfigured();
-        const res = await fetch(`${base_url}/status_by_trackingcode/${encodeURIComponent(trackingCode)}`, {
+        const res = await fetchWithTimeout(`${base_url}/status_by_trackingcode/${encodeURIComponent(trackingCode)}`, {
             headers: headers(),
         });
         const data: any = await res.json().catch(() => ({}));
@@ -81,7 +82,7 @@ const SteadfastService = {
     // GET /status_by_cid/{consignment_id}
     async getStatusByCid(cid: string) {
         ensureConfigured();
-        const res = await fetch(`${base_url}/status_by_cid/${encodeURIComponent(cid)}`, { headers: headers() });
+        const res = await fetchWithTimeout(`${base_url}/status_by_cid/${encodeURIComponent(cid)}`, { headers: headers() });
         const data: any = await res.json().catch(() => ({}));
         if (!res.ok) throw new AppError(502, `Steadfast (HTTP ${res.status}): ${data?.message || 'failed to fetch status.'}`);
         return data as { status: number; delivery_status: string };
@@ -90,7 +91,7 @@ const SteadfastService = {
     // GET /get_balance → { status, current_balance }
     async getBalance() {
         ensureConfigured();
-        const res = await fetch(`${base_url}/get_balance`, { headers: headers() });
+        const res = await fetchWithTimeout(`${base_url}/get_balance`, { headers: headers() });
         const data: any = await res.json().catch(() => ({}));
         if (!res.ok) throw new AppError(502, `Steadfast (HTTP ${res.status}): ${data?.message || 'failed to fetch balance.'}`);
         return data as { status: number; current_balance: number };
@@ -113,7 +114,7 @@ const SteadfastService = {
         for (const id of candidates) {
             let res: Response;
             try {
-                res = await fetch(`${base_url}/payments/${encodeURIComponent(id)}`, {
+                res = await fetchWithTimeout(`${base_url}/payments/${encodeURIComponent(id)}`, {
                     headers: headers(),
                     signal: AbortSignal.timeout(20000),
                 });

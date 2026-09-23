@@ -22,6 +22,12 @@ export function connectSocket(token?: string): Socket | null {
 
     const authToken = token || readToken();
 
+    // The server rejects any handshake without a token, and socket.io-client
+    // retries a rejected connection forever (backoff caps at 5s). Without a
+    // token that is a rejected handshake every few seconds, for as long as the
+    // page is open — so don't open one at all. Callers already handle null.
+    if (!authToken) return null;
+
     // Reuse an already-connected socket with the same auth.
     if (socket) {
         if (socket.connected) return socket;

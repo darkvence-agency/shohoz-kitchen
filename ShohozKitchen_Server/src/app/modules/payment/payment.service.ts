@@ -4,6 +4,7 @@ import AppError from '../../utils/AppError';
 import { Order } from '../order/order.model';
 import { Transaction } from './payment.model';
 import { ITransaction, PaymentMethod, TransactionStatus } from './payment.interface';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 
 /**
  * Node 18+/22 ships a global `fetch`, but the project's TS `lib` is ES2020
@@ -52,7 +53,7 @@ const safeFetchJson = async (
     init?: { method?: string; headers?: Record<string, string>; body?: string }
 ): Promise<any | null> => {
     try {
-        const res = await fetch(url, init);
+        const res = await fetchWithTimeout(url, init);
         try {
             return await res.json();
         } catch {

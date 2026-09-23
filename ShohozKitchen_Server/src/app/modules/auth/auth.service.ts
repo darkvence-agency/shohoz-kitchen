@@ -6,6 +6,7 @@ import { sendEmail } from '../../utils/email';
 import { User } from '../user/user.model';
 import { IAuthResponse, IJwtPayload, ITokens } from './auth.interface';
 import { TLoginInput, TRegisterInput } from './auth.validation';
+import { fetchWithTimeout } from '../../utils/fetchWithTimeout';
 
 // ── Helpers ───────────────────────────────────────────────
 const sha256 = (value: string): string => crypto.createHash('sha256').update(value).digest('hex');
@@ -214,7 +215,7 @@ const AuthService = {
             if (!config.google.client_id || !config.google.client_secret) {
                 throw new AppError(503, 'Google login is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
             }
-            const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+            const tokenRes = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({
@@ -237,7 +238,7 @@ const AuthService = {
             }
         } else if (idToken) {
             // ID token: tokeninfo validates signature + expiry and returns the claims.
-            const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+            const res = await fetchWithTimeout(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
             payload = await res.json().catch(() => ({}));
             if (!res.ok || !payload?.email) {
                 throw new AppError(401, 'Could not verify your Google account. Please try again.');
@@ -249,7 +250,7 @@ const AuthService = {
         } else if (accessToken) {
             // Access token: first confirm which app it was issued to (aud), then
             // pull the profile (name/picture) from the userinfo endpoint.
-            const tiRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`);
+            const tiRes = await fetchWithTimeout(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(accessToken)}`);
             const ti: any = await tiRes.json().catch(() => ({}));
             if (!tiRes.ok || !ti?.aud) {
                 throw new AppError(401, 'Could not verify your Google account. Please try again.');
@@ -257,7 +258,7 @@ const AuthService = {
             if (config.google.client_id && ti.aud !== config.google.client_id) {
                 throw new AppError(401, 'This Google sign-in is not authorized for Shohoz Kitchen.');
             }
-            const uiRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            const uiRes = await fetchWithTimeout('https://www.googleapis.com/oauth2/v3/userinfo', {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             payload = await uiRes.json().catch(() => ({}));
