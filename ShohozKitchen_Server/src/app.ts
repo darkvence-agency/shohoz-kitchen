@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express, { Application, Request, Response } from 'express';
+import mongoose from 'mongoose';
 import cookieParser from 'cookie-parser';
 
 import globalErrorHandler from './app/middlewares/globalErrorHandler';
@@ -92,8 +93,18 @@ app.get('/', (req: Request, res: Response) => {
     });
 });
 
+// Answers 503 unless the process can actually serve requests, so a health check
+// can tell "running" apart from "up but useless". `bufferCommands` is off, so a
+// dropped Mongo connection means every route 500s while the process looks fine.
 app.get('/api/health', (req: Request, res: Response) => {
-    res.status(200).json({ success: true, message: 'API is healthy', uptime: process.uptime() });
+    const state = mongoose.connection.readyState; // 1 = connected, 2 = connecting
+    const dbReady = state === 1;
+    res.status(dbReady ? 200 : 503).json({
+        success: dbReady,
+        message: dbReady ? 'API is healthy' : 'Database is not connected',
+        database: ['disconnected', 'connected', 'connecting', 'disconnecting'][state] ?? 'unknown',
+        uptime: process.uptime(),
+    });
 });
 
 // ── Uploaded images (stored on the VPS disk) ─────────────────────

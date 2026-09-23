@@ -92,6 +92,18 @@ export const getIO = (): SocketIOServer => {
 };
 
 /**
+ * Disconnect every client and release the Socket.IO server. Without this the
+ * HTTP server's own close() waits forever on open websockets — see the
+ * shutdown handler in server.ts. Safe to call when sockets were never started.
+ */
+export const closeSocket = (): void => {
+    if (!io) return;
+    io.disconnectSockets(true);
+    io.close();
+    io = null;
+};
+
+/**
  * Emit a 'message:new' event to every participant's personal room and the
  * conversation room. Safe to call even if sockets aren't initialised yet.
  */
