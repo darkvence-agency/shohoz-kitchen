@@ -5,6 +5,11 @@ export const siteContentApi = baseApi.injectEndpoints({
         // Public: get site content
         getSiteContent: builder.query({
             query: () => '/site-content',
+            // The argument is ignored — there is only ever one site-content document.
+            // Without this, callers passing `undefined` and callers passing `{}` get
+            // two separate cache entries and the request is made twice on every page
+            // (the header asked one way, the theme provider and footer the other).
+            serializeQueryArgs: () => 'site-content',
             providesTags: ['SiteContent'],
         }),
 
