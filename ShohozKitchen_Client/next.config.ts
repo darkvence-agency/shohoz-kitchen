@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
     // (as with hero-01.webp) rather than overwriting it.
     return [
       {
-        source: "/:path(categories|images|products)/:file*",
+        source: "/:path(categories|images)/:file*",
         headers: [{ key: "Cache-Control", value: "public, max-age=2592000" }],
       },
       {
@@ -53,17 +53,6 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "picsum.photos",
-      },
-      // Uploaded product/category images. fileToUrl() on the API builds these
-      // from BACKEND_URL, so the API's own host has to be allowed here or
-      // next/image refuses to optimise them.
-      {
-        protocol: "https",
-        hostname: "api.13.140.168.218.sslip.io",
-      },
-      {
-        protocol: "https",
-        hostname: "api.shohozkitchen.com",
       },
       // Production domain (uploaded images are served from the same origin).
       {
