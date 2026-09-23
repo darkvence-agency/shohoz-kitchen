@@ -36,7 +36,10 @@ export const authMiddleware = async (
             role: 'superadmin' | 'admin' | 'editor' | 'user';
         };
 
-        const user = await User.findById(decoded.userId);
+        // Runs on every authenticated request, and only these two fields are read —
+        // so fetch just those, unhydrated. The full document carries the password
+        // hash, every saved address and the whole wishlist.
+        const user = await User.findById(decoded.userId).select('isDeleted status').lean();
         if (!user) throw new AppError(401, 'User belonging to this token no longer exists.');
         if (user.isDeleted) throw new AppError(401, 'This user account has been deleted.');
         if (user.status === 'blocked') throw new AppError(403, 'Your account has been blocked. Contact support.');
@@ -74,7 +77,7 @@ export const authorizePermission = (...requiredPerms: string[]) => {
             // Superadmin bypasses all permission checks.
             if (req.user.role === 'superadmin') return next();
 
-            const user = await User.findById(req.user.userId);
+            const user = await User.findById(req.user.userId).select('permissions').lean();
             if (!user) throw new AppError(401, 'User belonging to this token no longer exists.');
 
             const userPerms = user.permissions || [];
