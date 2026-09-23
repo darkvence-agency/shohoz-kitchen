@@ -174,6 +174,15 @@ productSchema.index({ colors: 1 });
 productSchema.index({ isDeleted: 1, status: 1 });
 productSchema.index({ approvalStatus: 1 });
 
+// The storefront's two hot sorts. Without a matching index Mongo has to fetch
+// every product the filter allows and sort it in memory, on every request —
+// which the homepage makes five times over.
+// Public listing, newest first (QueryBuilder's default sort):
+productSchema.index({ isDeleted: 1, visibility: 1, approvalStatus: 1, createdAt: -1 });
+// Featured / best sellers, by units sold. `totalSold` is not a usable prefix of
+// the { rating, totalSold } index above, so it needs its own.
+productSchema.index({ isDeleted: 1, status: 1, totalSold: -1 });
+
 // ── Virtual: discountedPrice ───────────────────────────────
 productSchema.virtual('discountedPrice').get(function () {
     if (this.discount > 0) {
