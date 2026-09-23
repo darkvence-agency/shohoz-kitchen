@@ -2,15 +2,16 @@ import express from 'express';
 import SiteContentController from './siteContent.controller';
 import { authMiddleware, authorizeRoles } from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
+import { publicCache } from '../../middlewares/publicCache';
 import { updateMarketingValidation, updatePaymentValidation, updateSeoValidation } from './siteContent.validation';
 
 const router = express.Router();
 
 // Public — anyone can fetch site content
-router.get('/', SiteContentController.get);
+router.get('/', publicCache(60), SiteContentController.get);
 
 // Public — get single legal page by slug
-router.get('/legal/:slug', SiteContentController.getLegalPage);
+router.get('/legal/:slug', publicCache(300), SiteContentController.getLegalPage);
 
 // Admin — get all legal pages
 router.get('/legal', authMiddleware, authorizeRoles('admin'), SiteContentController.getAllLegalPages);
