@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { FiX } from 'react-icons/fi';
 import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
 
@@ -136,14 +135,11 @@ const CategoryExpertise: React.FC<CategoryExpertiseProps> = ({ onClose }) => {
                             {/* Icon tile — square, fills its grid column */}
                             <div className="relative w-full aspect-square rounded-2xl overflow-hidden transition-all duration-200 group-hover:shadow-lg">
                                 {categoryImage(cat) ? (
-                                    <Image
-                                        src={categoryImage(cat)!}
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img
+                                        src={categoryImage(cat)}
                                         alt={cat.name}
-                                        fill
-                                        // A tile is a fraction of the row on phones and
-                                        // ~150px on desktop; never the full 400px source.
-                                        sizes="(max-width: 640px) 25vw, (max-width: 1024px) 15vw, 150px"
-                                        className="object-cover select-none transition-transform duration-200 group-hover:scale-105"
+                                        className="absolute inset-0 h-full w-full object-cover select-none transition-transform duration-200 group-hover:scale-105"
                                     />
                                 ) : (
                                     <span className="text-5xl sm:text-7xl select-none transition-transform duration-200 group-hover:scale-110">

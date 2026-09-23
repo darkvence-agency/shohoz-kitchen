@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 
 import {
     useGetProductReviewsQuery,
@@ -49,8 +48,6 @@ interface NewProductCardProps {
     product: Product;
 }
 
-const PRODUCT_IMAGE_FALLBACK = '/images/placeholder-product.svg';
-
 const formatCount = (n: number): string => {
     if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'K';
     return String(n);
@@ -76,12 +73,6 @@ const NewProductCard: React.FC<NewProductCardProps> = ({ product }) => {
         : localWishlist.some((item: any) => item.id === productId);
     const [wishlistAnim, setWishlistAnim] = useState(false);
     const [showAlreadyAdded, setShowAlreadyAdded] = useState(false);
-
-    // Falls back to a local placeholder rather than via.placeholder.com: that
-    // service has been unreliable since 2024, and a card whose image 404s would
-    // otherwise hang on a cross-origin request that never answers.
-    const [imageFailed, setImageFailed] = useState(false);
-    const imageSrc = (!imageFailed && product.image) || PRODUCT_IMAGE_FALLBACK;
 
 
 
@@ -181,15 +172,13 @@ const NewProductCard: React.FC<NewProductCardProps> = ({ product }) => {
                                 style={{ fill: isInWishlist ? 'currentColor' : 'none' }}
                             />
                         </button>
-                        <Image
-                            src={imageSrc}
+                        <img
+                            src={product.image || 'https://via.placeholder.com/400x400/F1F5F9/CBD5E1?text=Product'}
                             alt={product.name}
-                            fill
-                            // Four across on a phone-width grid, up to ~220px on desktop.
-                            // Next uses this to pick the smallest sensible file per device.
-                            sizes='(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 220px'
-                            className='object-cover group-hover:scale-105 transition-transform duration-500'
-                            onError={() => setImageFailed(true)}
+                            className='w-full h-full object-cover group-hover:scale-105 transition-transform duration-500'
+                            onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x400/F1F5F9/CBD5E1?text=Product';
+                            }}
                         />
                     </div>
 
@@ -363,7 +352,7 @@ const CommentsPopup: React.FC<{
                             className='w-full object-contain'
                             style={{ maxHeight: '280px' }}
                             onError={(e) => {
-                                (e.target as HTMLImageElement).src = PRODUCT_IMAGE_FALLBACK;
+                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/620x200/f3f4f6/9ca3af?text=No+Image';
                             }}
                         />
                     </div>
