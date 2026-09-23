@@ -16,7 +16,6 @@ import CtaBanner from './CtaBanner';
 import FlashSale from './FlashSale';
 import DealsRow from './DealsRow';
 import BestSellers from './BestSellers';
-import VendorShowcase from './VendorShowcase';
 
 const LIMIT = 20;
 
@@ -262,8 +261,6 @@ const NewHomePage: React.FC = () => {
                     </div>
                 )}
             </div>
-
-            {!searchTerm && !selectedCategory && <VendorShowcase />}
 
             <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
                 {/* New Arrivals (Strictly isNewProduct: true) */}
