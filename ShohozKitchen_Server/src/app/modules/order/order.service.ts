@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { Types } from 'mongoose';
-import { Order } from './order.model';
+import { Order, resyncOrderCounter } from './order.model';
+import { ORDER_ID_PREFIXES, formatOrderId, parseOrderId } from './orderCounter.model';
+import type { CreateAdminOrderPayload } from './order.validation';
 import { Product } from '../product/product.model';
 import { User } from '../user/user.model';
 import { Coupon } from '../coupon/coupon.model';
@@ -9,6 +11,27 @@ import QueryBuilder from '../../utils/QueryBuilder';
 import { notifyOrderToWhatsApp } from '../../utils/whatsappNotify';
 import { computeShippingCost, isDeliveryArea } from '../shipping/shipping.service';
 import { logStockMovements, variantOf, StockMovementInput } from '../inventory/inventory.ledger';
+import { normalizePhone, phonePattern } from '../fraud/fraud.rules';
+
+/**
+ * Options only the dashboard's "New order" passes to createOrder. Checkout and guest
+ * checkout never set them, so prices or a delivery charge a customer sends are ignored.
+ */
+export interface CreateOrderOptions {
+    /** Honour each line's unitPrice / originalPrice and the `shipping` mode from the payload. */
+    allowPriceOverride?: boolean;
+    /** The staff member placing the order: stored as createdBy, and the order's source is 'admin'. */
+    adminId?: string;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** An amount staff typed on a dashboard order: a finite number, not negative. */
+const isAmount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+/** A save refused by the unique orderId index: the order counter fell behind the IDs in use. */
+const isDuplicateOrderId = (e: any) =>
+    e?.code === 11000 && Boolean(e?.keyPattern?.orderId || e?.keyValue?.orderId || /orderId/.test(String(e?.message)));
 
 // ── Stock ledger (Inventory → Movements) ────────────────────────
 // Every place below that changes product.stock also logs a ledger row, AFTER the stock
@@ -22,6 +45,55 @@ function matchVariant(variants: any[] | undefined, color?: string, size?: string
     if (!color && !size) return null;
     const same = (a: unknown, b: unknown) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
     return (variants || []).find((v: any) => (!color || same(v.color, color)) && (!size || same(v.size, size))) || null;
+}
+
+/**
+ * The unit price the shop charges for a line right now.
+ * A matched variant's `price` is already its sale price — the product pre-save hook
+ * derives `variant.discount` FROM originalPrice vs price — so it is charged as it is.
+ * (Taking `discount` off it again, as checkout once did, discounted variant lines twice.)
+ * Without a variant: the product price while its offer window is open, else the list price.
+ */
+function catalogUnitPrice(product: any, variant: any | null): number {
+    if (variant) return variant.price;
+    const now = new Date();
+    const start = product.offerStartDate ? new Date(product.offerStartDate) : null;
+    const end = product.offerEndDate ? new Date(product.offerEndDate) : null;
+    const afterStart = !start || isNaN(start.getTime()) || now.getTime() >= start.getTime();
+    const beforeEnd = !end || isNaN(end.getTime()) || now.getTime() <= end.getTime();
+    const offerActive = afterStart && beforeEnd;
+    if (offerActive) return product.price;
+    return product.originalPrice && product.originalPrice > 0 ? product.originalPrice : product.price;
+}
+
+/** The line's list ("was") price: the variant's / product's originalPrice when above `charged`, else `charged`. */
+function catalogListPrice(product: any, variant: any | null, charged: number): number {
+    const op = Number(variant ? variant.originalPrice : product.originalPrice) || 0;
+    return op > 0 && op > charged ? op : charged;
+}
+
+/** Whole percent `price` is below `originalPrice`: never negative, and 0 without a list price. */
+function discountPercentOf(originalPrice: number, price: number): number {
+    if (!(originalPrice > 0)) return 0;
+    return Math.max(0, Math.round(((originalPrice - price) / originalPrice) * 100));
+}
+
+/**
+ * Accounts on file for a Bangladeshi mobile number (local form, 01XXXXXXXXX), however
+ * it was saved: "01712345678", "+8801712345678", "8801712345678", or with spaces or
+ * dashes. The exact forms are tried first; the pattern search only runs when they
+ * turn up no customer.
+ */
+async function findUsersByPhone(local: string): Promise<any[]> {
+    const live = { isDeleted: { $ne: true } };
+    const exact = await User.find({ ...live, phone: { $in: [local, `+88${local}`, `88${local}`] } }).limit(10);
+    if (exact.some((u: any) => u.role === 'user')) return exact;
+    const loose = await User.find({
+        ...live,
+        _id: { $nin: exact.map((u: any) => u._id) },
+        phone: { $regex: phonePattern(local) },
+    }).limit(10);
+    return [...exact, ...loose.filter((u: any) => normalizePhone(u.phone) === local)];
 }
 
 /**
@@ -89,18 +161,6 @@ async function closeFraudFlag(orderId: unknown, status: string, actorId?: string
 
 // ── Status helpers ──────────────────────────────────────────────
 const STATUS_ORDER = ['pending', 'confirmed', 'processing', 'shipped', 'on_the_way', 'out_for_delivery', 'delivery_attempt', 'delivered'];
-
-// Add `n` business days to a date, skipping Bangladesh weekend (Fri=5, Sat=6).
-function addBusinessDays(date: Date, n: number): Date {
-    const result = new Date(date.getTime());
-    let added = 0;
-    while (added < n) {
-        result.setDate(result.getDate() + 1);
-        const day = result.getDay(); // 0=Sun … 5=Fri, 6=Sat
-        if (day !== 5 && day !== 6) added++;
-    }
-    return result;
-}
 
 // Compute the overall order status from its packages (least-advanced active package wins)
 function computeOrderStatus(packages: any[]): string {
@@ -174,88 +234,70 @@ const OrderService = {
         return userId ? withoutStaffNotes(order) : order;
     },
 
-    async createOrder(userId: string, payload: any) {
+    // opts is set only by createAdminOrder (see CreateOrderOptions).
+    async createOrder(userId: string, payload: any, opts: CreateOrderOptions = {}) {
         const { items, shippingAddress, paymentMethod, paymentDetails, couponCode, note, zoneId, deliveryArea } = payload;
+        const override = opts.allowPriceOverride === true;
+        const area = isDeliveryArea(deliveryArea) ? deliveryArea : undefined;
 
         // Get product details and calculate totals
         let subtotal = 0;
         const orderItems: any[] = [];
 
-        // Resolve the price a customer actually pays RIGHT NOW:
-        // If a variant (color / size) was chosen, use the variant's price.
-        // Otherwise (or when deselected), fall back to the base product price.
-        const resolveEffectivePrice = (product: any, item?: any): number => {
-            if (item && (item.color || item.size)) {
-                const variants = product.variants || [];
-                const v = variants.find(
-                    (vv: any) =>
-                        (!item.color || String(vv.color).trim().toLowerCase() === String(item.color).trim().toLowerCase()) &&
-                        (!item.size || String(vv.size).trim().toLowerCase() === String(item.size).trim().toLowerCase())
-                );
-                if (v) {
-                    const vd = v.discount || 0;
-                    return vd > 0 ? v.price - (v.price * vd) / 100 : v.price;
-                }
-            }
-            const now = new Date();
-            const start = product.offerStartDate ? new Date(product.offerStartDate) : null;
-            const end = product.offerEndDate ? new Date(product.offerEndDate) : null;
-            const afterStart = !start || isNaN(start.getTime()) || now.getTime() >= start.getTime();
-            const beforeEnd = !end || isNaN(end.getTime()) || now.getTime() <= end.getTime();
-            const offerActive = afterStart && beforeEnd;
-            if (offerActive) return product.price;
-            return product.originalPrice && product.originalPrice > 0 ? product.originalPrice : product.price;
-        };
-
+        // Each line is priced from the product as it is RIGHT NOW (the chosen colour /
+        // size variant's price, else the product's). Only a dashboard order may replace
+        // that with the price staff typed.
         const stagedItems: any[] = [];
         for (const item of items) {
             const product = await Product.findOne({ _id: item.product, isDeleted: false, status: 'active' });
             if (!product) throw new AppError(404, `Product not found: ${item.product}`);
             if (product.stock < item.quantity) throw new AppError(400, `Insufficient stock for: ${product.name}`);
 
-            const unitPrice = resolveEffectivePrice(product, item);
-            const itemTotal = unitPrice * item.quantity;
+            const variant = matchVariant(product.variants, item.color, item.size);
+            const catalogPrice = catalogUnitPrice(product, variant);
+            const priceOverridden = override && isAmount(item.unitPrice);
+            const unitPrice = priceOverridden ? round2(item.unitPrice) : catalogPrice;
+            // The "was" price: what staff typed, else the shop's list price — never below
+            // what is charged, so a price raised by staff shows no discount.
+            const originalPrice = override && isAmount(item.originalPrice)
+                ? round2(item.originalPrice)
+                : Math.max(catalogListPrice(product, variant, catalogPrice), unitPrice);
+            const itemTotal = round2(unitPrice * item.quantity);
             subtotal += itemTotal;
 
-            stagedItems.push({ product, item, itemTotal, unitPrice });
+            stagedItems.push({ product, variant, item, itemTotal, unitPrice, originalPrice, priceOverridden });
         }
+        subtotal = round2(subtotal);
 
         // Build order items with pre-generated _ids (so the package can reference them)
         for (const staged of stagedItems) {
-            const { product, item, itemTotal, unitPrice } = staged;
+            const { product, variant, item, itemTotal, unitPrice, originalPrice, priceOverridden } = staged;
             const _id = new Types.ObjectId();
-
-            let itemThumbnail = product.thumbnail;
-            if (item && (item.color || item.size)) {
-                const variants = product.variants || [];
-                const v = variants.find(
-                    (vv: any) =>
-                        (!item.color || String(vv.color).trim().toLowerCase() === String(item.color).trim().toLowerCase()) &&
-                        (!item.size || String(vv.size).trim().toLowerCase() === String(item.size).trim().toLowerCase())
-                );
-                if (v && v.images && v.images.length > 0) {
-                    itemThumbnail = v.images[0];
-                }
-            }
 
             orderItems.push({
                 _id,
                 product: product._id,
                 name: product.name,
-                thumbnail: itemThumbnail,
+                thumbnail: variant?.images?.length ? variant.images[0] : product.thumbnail,
                 price: unitPrice,
                 quantity: item.quantity,
                 total: itemTotal,
                 color: item.color || '',
                 size: item.size || '',
+                originalPrice,
+                discountPercent: discountPercentOf(originalPrice, unitPrice),
+                priceOverridden,
+                sku: String(variant?.sku || '').trim() || String(product.sku || '').trim(),
             });
         }
 
         // One fulfillment package per order (single-store: every item ships together).
+        // Its subtotal is the sum of the lines as charged (staff prices included): the
+        // courier's COD amount is built from it (codFor in courier.service.ts).
         const packages = [{
             itemIds: orderItems.map((oi) => oi._id),
             status: 'pending',
-            subtotal: orderItems.reduce((sum, oi) => sum + oi.total, 0),
+            subtotal: round2(orderItems.reduce((sum, oi) => sum + oi.total, 0)),
             timeline: [{ status: 'pending', note: 'Order placed' }],
         }];
 
@@ -316,15 +358,35 @@ const OrderService = {
         // Free shipping resolves via: all-items-free-delivery → coupon → subtotal
         // threshold → quantity → zone rate. Platform delivery fee is added to the
         // master order total only.
-        const { shippingCost, freeReason, zoneName } = await computeShippingCost({
-            city: shippingAddress?.city || '',
-            subtotal,
-            items: stagedItems.map((s: any) => ({ freeShipping: Boolean(s.product?.shippingConfig?.freeShipping) })),
-            totalQuantity: orderItems.reduce((n: number, oi: any) => n + (oi.quantity || 0), 0),
-            couponFreeShipping,
-            zoneId,
-            area: isDeliveryArea(deliveryArea) ? deliveryArea : undefined,
-        });
+        // The one exception: on a dashboard order staff may waive the charge ('free') or
+        // type it ('custom'); 'auto' runs the same rules as checkout.
+        const shipping = override ? payload.shipping : undefined;
+        const shippingMode: 'auto' | 'free' | 'custom' =
+            shipping?.mode === 'free' || shipping?.mode === 'custom' ? shipping.mode : 'auto';
+        let shippingCost: number;
+        let freeReason: string | null = null;
+        let zoneName = '';
+        if (shippingMode === 'free') {
+            shippingCost = 0;
+            freeReason = 'admin';
+        } else if (shippingMode === 'custom') {
+            if (!isAmount(shipping.amount)) throw new AppError(400, 'Enter the delivery charge');
+            shippingCost = round2(shipping.amount);
+            if (shippingCost === 0) freeReason = 'admin';
+        } else {
+            const quote = await computeShippingCost({
+                city: shippingAddress?.city || '',
+                subtotal,
+                items: stagedItems.map((s: any) => ({ freeShipping: Boolean(s.product?.shippingConfig?.freeShipping) })),
+                totalQuantity: orderItems.reduce((n: number, oi: any) => n + (oi.quantity || 0), 0),
+                couponFreeShipping,
+                zoneId,
+                area,
+            });
+            shippingCost = quote.shippingCost;
+            freeReason = quote.freeReason;
+            zoneName = quote.zoneName || '';
+        }
         const total = Math.max(0, subtotal - discount) + shippingCost;
 
         // ── Reserve stock ATOMICALLY before creating the order. The earlier per-item
@@ -367,26 +429,39 @@ const OrderService = {
         }
 
         // Create order (roll the reserved stock back if the order itself fails to persist).
+        const orderData = {
+            user: userId,
+            items: orderItems,
+            packages,
+            shippingAddress,
+            subtotal,
+            shippingCost,
+            shippingFreeReason: freeReason || '',
+            shippingZone: zoneName || '',
+            shippingMode,
+            deliveryArea: area,
+            discount,
+            total,
+            couponCode: appliedCoupon ? appliedCoupon.code : '',
+            paymentMethod,
+            paymentDetails: paymentDetails || {},
+            transactionId: paymentDetails?.transactionId || '',
+            note: note || '',
+            timeline: [{ status: 'pending', note: 'Order placed successfully' }],
+            source: opts.adminId ? 'admin' : 'storefront',
+            createdBy: opts.adminId || undefined,
+        };
         let order;
         try {
-            order = await Order.create({
-                user: userId,
-                items: orderItems,
-                packages,
-                shippingAddress,
-                subtotal,
-                shippingCost,
-                shippingFreeReason: freeReason || '',
-                shippingZone: zoneName || '',
-                discount,
-                total,
-                couponCode: appliedCoupon ? appliedCoupon.code : '',
-                paymentMethod,
-                paymentDetails: paymentDetails || {},
-                transactionId: paymentDetails?.transactionId || '',
-                note: note || '',
-                timeline: [{ status: 'pending', note: 'Order placed successfully' }],
-            });
+            try {
+                order = await Order.create(orderData);
+            } catch (err) {
+                // The order number was already taken (a counter restored from an older
+                // backup, say): move the counter past every number in use, try once more.
+                if (!isDuplicateOrderId(err)) throw err;
+                await resyncOrderCounter();
+                order = await Order.create(orderData);
+            }
         } catch (err) {
             await rollbackReserved();
             throw err;
@@ -404,7 +479,7 @@ const OrderService = {
                 unitCost: r.unitCost > 0 ? r.unitCost : null, // cost of goods at the time of sale
                 note: `Order ${order.orderId || order._id}`,
                 order: order._id,
-                createdBy: userId,
+                createdBy: opts.adminId || userId, // staff who took a dashboard order, else the customer
             })));
         } catch {
             // never block order flow
@@ -521,7 +596,7 @@ const OrderService = {
 
     // ── Guest checkout: auto-create user + place order ────────────────
     async createGuestOrder(payload: any) {
-        const { shippingAddress, paymentMethod, items, couponCode, note, password } = payload;
+        const { shippingAddress, password } = payload;
         const { fullName, email, phone } = shippingAddress;
 
         if (!phone || !fullName) {
@@ -590,21 +665,37 @@ const OrderService = {
     // ── Admin "New order": a phone / walk-in order keyed by the customer's phone ──
     // Reuses the buyer if that phone is already on file, otherwise creates one with a
     // placeholder email and a random password (no token is issued — the admin is the
-    // one placing it). Pricing, shipping, stock and coupons then run through the exact
-    // same createOrder path as the storefront.
-    async createAdminOrder(payload: any) {
-        const { fullName, phone, email } = payload.shippingAddress || {};
-        if (!phone || !fullName) throw new AppError(400, 'Customer name and phone number are required');
+    // one placing it). Pricing, shipping, stock and coupons then run through the same
+    // createOrder path as the storefront, except that staff may set each line's price
+    // and the delivery charge.
+    // A starting status / payment other than pending goes through the very
+    // updateOrderStatus / updatePaymentStatus the order page uses, so every side effect
+    // (timeline, packages, activity log, notifications) is the same. If one of those
+    // fails the order still stands; `warnings` says what is left to do by hand.
+    async createAdminOrder(payload: CreateAdminOrderPayload, adminId: string): Promise<{ order: any; warnings: string[] }> {
+        const { fullName, email } = payload.shippingAddress || ({} as CreateAdminOrderPayload['shippingAddress']);
+        if (!payload.shippingAddress?.phone || !String(fullName || '').trim()) {
+            throw new AppError(400, 'Customer name and phone number are required');
+        }
 
-        const cleanPhone = String(phone).replace(/\s+/g, '');
-        let user = await User.findOne({ phone: cleanPhone, isDeleted: { $ne: true } });
+        // One form for every way a number gets typed ("+880 1712-345678" → "01712345678"),
+        // so a customer already on file is found instead of getting a second account.
+        const phone = normalizePhone(payload.shippingAddress.phone);
+        if (!/^01\d{9}$/.test(phone)) {
+            throw new AppError(400, 'Enter a valid 11-digit mobile number (01XXXXXXXXX)');
+        }
 
-        if (user && user.role !== 'user') {
+        // A customer account wins; a number that only a staff account uses is refused.
+        const matches = await findUsersByPhone(phone);
+        let user: any = matches.find((u: any) => u.role === 'user' && u.phone === phone)
+            || matches.find((u: any) => u.role === 'user')
+            || null;
+        if (!user && matches.length) {
             throw new AppError(400, 'This phone number belongs to a staff account, not a customer');
         }
 
         if (!user) {
-            const placeholder = (email || `${cleanPhone}@guest.shohozkitchen.com`).toLowerCase().trim();
+            const placeholder = (String(email || '').trim() || `${phone}@guest.shohozkitchen.com`).toLowerCase();
             if (await User.exists({ email: placeholder })) {
                 throw new AppError(409, 'A customer already uses this email — search for them by that email instead');
             }
@@ -614,7 +705,7 @@ const OrderService = {
                 password: crypto.randomBytes(24).toString('hex'),
                 firstName: nameParts[0] || 'Customer',
                 lastName: nameParts.slice(1).join(' '),
-                phone: cleanPhone,
+                phone,
                 role: 'user',
                 status: 'active',
                 isEmailVerified: false,
@@ -623,11 +714,38 @@ const OrderService = {
             throw new AppError(400, 'This customer is blocked — unblock them before taking an order');
         }
 
-        return this.createOrder(user._id!.toString(), {
-            ...payload,
-            shippingAddress: { ...payload.shippingAddress, phone: cleanPhone },
-            paymentMethod: payload.paymentMethod || 'cod',
-        });
+        const order: any = await this.createOrder(
+            user._id!.toString(),
+            {
+                ...payload,
+                shippingAddress: { ...payload.shippingAddress, phone },
+                paymentMethod: payload.paymentMethod || 'cod',
+            },
+            { allowPriceOverride: true, adminId },
+        );
+
+        const id = order._id.toString();
+        const reason = (err: any) => String(err?.message || 'unknown error');
+        const warnings: string[] = [];
+        let latest: any = order;
+
+        if (payload.status === 'confirmed' || payload.status === 'processing') {
+            const label = payload.status === 'confirmed' ? 'Confirmed' : 'Processing';
+            try {
+                latest = await this.updateOrderStatus(id, payload.status, undefined, adminId);
+            } catch (err) {
+                warnings.push(`It could not be marked ${label} (${reason(err)}), so it is still Pending. Change the status on the order page.`);
+            }
+        }
+        if (payload.paymentStatus === 'paid') {
+            try {
+                latest = await this.updatePaymentStatus(id, 'paid');
+            } catch (err) {
+                warnings.push(`The payment could not be marked paid (${reason(err)}). Mark it paid on the order page.`);
+            }
+        }
+
+        return { order: latest, warnings };
     },
 
     // actorId (optional) → the admin shown as "by" on the stock ledger when a cancel restocks.
@@ -968,13 +1086,22 @@ const OrderService = {
         return order;
     },
 
-    // Public order tracking — matches human orderId (case-insensitive) OR Mongo _id
+    // Public order tracking — matches human orderId (case-insensitive) OR Mongo _id.
+    // Old orders are KM-xxxx and new ones SK-xxxx; their numbers never overlap (the
+    // counter carried on from the highest KM number), so "SK-0033" or "km33" still
+    // finds KM-0033.
     async trackOrder(orderId: string): Promise<any> {
         const escaped = orderId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const or: any[] = [{ orderId: new RegExp('^' + escaped + '$', 'i') }];
         if (Types.ObjectId.isValid(orderId)) or.push({ _id: orderId });
 
-        const order = await Order.findOne({ $or: or });
+        let order = await Order.findOne({ $or: or });
+        if (!order) {
+            const parsed = parseOrderId(orderId);
+            if (parsed && parsed.n > 0 && ORDER_ID_PREFIXES.includes(parsed.prefix)) {
+                order = await Order.findOne({ orderId: { $in: ORDER_ID_PREFIXES.map((p) => formatOrderId(parsed.n, p)) } });
+            }
+        }
         if (!order) throw new AppError(404, 'Order not found');
 
         const o: any = order;

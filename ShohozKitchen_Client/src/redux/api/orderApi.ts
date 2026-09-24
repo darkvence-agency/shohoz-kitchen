@@ -1,5 +1,44 @@
 import { baseApi } from "./baseApi";
 
+/** A payment the shop can record against an order. */
+export type OrderPaymentMethod = 'cod' | 'bkash' | 'nagad' | 'rocket' | 'bank';
+
+/** One line of an admin "New order". */
+export interface AdminOrderItemInput {
+    product: string;
+    quantity: number;
+    color?: string;
+    size?: string;
+    /** Price charged per unit for THIS order only — sent only when staff changed the price. */
+    unitPrice?: number;
+    /** The list / "was" price shown next to it — sent together with unitPrice. */
+    originalPrice?: number;
+}
+
+/** Body of POST /api/orders/admin. Anything left out is resolved by the server. */
+export interface AdminOrderInput {
+    items: AdminOrderItemInput[];
+    shippingAddress: {
+        fullName: string;
+        phone: string;
+        email?: string;
+        address: string;
+        area?: string;
+        city?: string;
+        postalCode?: string;
+    };
+    paymentMethod: OrderPaymentMethod;
+    paymentDetails?: { senderNumber?: string; transactionId?: string; paymentTime?: string };
+    paymentStatus?: 'pending' | 'paid';
+    status?: 'pending' | 'confirmed' | 'processing';
+    deliveryArea?: 'inside_dhaka' | 'outside_dhaka';
+    zoneId?: string;
+    /** auto = the normal delivery charge, free = none, custom = `amount`. */
+    shipping?: { mode: 'auto' | 'free' | 'custom'; amount?: number };
+    couponCode?: string;
+    note?: string;
+}
+
 export const orderApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         // ===== Admin endpoints =====
@@ -57,7 +96,7 @@ export const orderApi = baseApi.injectEndpoints({
         }),
 
         // Admin: "New order" for a phone / walk-in customer — Backend route: POST /api/orders/admin
-        createAdminOrder: builder.mutation({
+        createAdminOrder: builder.mutation<{ data?: { _id?: string; orderId?: string } }, AdminOrderInput>({
             query: (data) => ({
                 url: '/orders/admin',
                 method: 'POST',
@@ -125,7 +164,7 @@ export const orderApi = baseApi.injectEndpoints({
         }),
 
 // ===== Public tracking endpoint (no auth) =====
-        // Public: track order by human orderId (e.g. KM-0001) or Mongo _id — Backend route: GET /api/orders/track/:orderId
+        // Public: track order by human orderId (e.g. SK-0050, or KM-xxxx for older orders) or Mongo _id — Backend route: GET /api/orders/track/:orderId
         trackOrder: builder.query({
             query: (orderId) => ({
                 url: `/orders/track/${orderId}`,

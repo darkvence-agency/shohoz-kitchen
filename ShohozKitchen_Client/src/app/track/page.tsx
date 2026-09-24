@@ -247,7 +247,7 @@ function TrackOrderInner() {
                             type="text"
                             value={orderId}
                             onChange={(e) => setOrderId(e.target.value)}
-                            placeholder="e.g. KM-0001"
+                            placeholder="e.g. SK-0050"
                             className="flex-1 bg-transparent outline-none text-sm text-gray-800 placeholder:text-gray-400"
                         />
                     </div>
@@ -278,7 +278,7 @@ function TrackOrderInner() {
                         </div>
                         <p className="text-sm font-semibold text-gray-800">Order not found</p>
                         <p className="text-xs text-gray-500 mt-1">
-                            Double-check your Order ID (e.g. KM-0001) and try again.
+                            Double-check your Order ID (e.g. SK-0050) and try again.
                         </p>
                     </div>
                 )}

@@ -2,7 +2,7 @@ import express from 'express';
 import OrderController from './order.controller';
 import { authMiddleware, authorizeRoles } from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
-import { createOrderValidation, updateOrderStatusValidation } from './order.validation';
+import { createAdminOrderValidation, createOrderValidation, updateOrderStatusValidation } from './order.validation';
 import { OrderPrintController, orderPrintValidation } from './order.print';
 
 const router = express.Router();
@@ -23,8 +23,9 @@ router.patch('/:id/cancel', authMiddleware, OrderController.cancel);
 
 // ── Admin routes ─────────────────────────────────
 // Editors (order desk) may list, open, confirm / update status, add notes and print.
-// Creating orders, payments and courier tracking stay with admins.
-router.post('/admin', authMiddleware, authorizeRoles('admin'), validateRequest(createOrderValidation), OrderController.createByAdmin);
+// Creating orders, payments and courier tracking stay with admins. Only this route may
+// set line prices, the delivery charge and the starting status (createAdminOrderValidation).
+router.post('/admin', authMiddleware, authorizeRoles('admin'), validateRequest(createAdminOrderValidation), OrderController.createByAdmin);
 router.get('/admin/all', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getAll);
 router.get('/admin/stats', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getStats);
 // Shipping labels / invoices for up to 100 orders (rendered as HTML in the browser).

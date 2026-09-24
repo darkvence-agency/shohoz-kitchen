@@ -1,5 +1,10 @@
 import { Schema, model } from 'mongoose';
+import { OrderCounter, ORDER_COUNTER_ID, formatOrderId, parseOrderId } from './orderCounter.model';
 
+// `price` is the unit price actually charged and `total` = price × quantity.
+// originalPrice / discountPercent / priceOverridden / sku came later: lines of older
+// orders have none of them, and everything that reads a line treats a missing
+// originalPrice as "no discount".
 const orderItemSchema = new Schema({
     product: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     name: { type: String, required: true },
@@ -9,6 +14,14 @@ const orderItemSchema = new Schema({
     total: { type: Number, required: true },
     color: { type: String, default: '' },
     size: { type: String, default: '' },
+    // List ("was") price per unit at order time, shown struck through when above `price`.
+    originalPrice: { type: Number },
+    // Whole percent off originalPrice; 0 when there is no discount.
+    discountPercent: { type: Number },
+    // True when staff typed this line's price on a dashboard order.
+    priceOverridden: { type: Boolean, default: false },
+    // SKU at order time: the variant's own SKU when it has one, else the product's.
+    sku: { type: String },
 
 }, { _id: true });
 
@@ -39,6 +52,11 @@ const packageSchema = new Schema({
     consignmentId: { type: String, default: '' },   // Steadfast consignment id
     courierStatus: { type: String, default: '' },    // raw Steadfast delivery_status
     courierBookedAt: { type: Date },
+    // Set just before asking Steadfast to create the parcel, cleared once it answers
+    // with a consignment. Still set means a send did not finish — a timeout can land
+    // after Steadfast has already created the parcel — so the next send checks
+    // Steadfast by invoice first instead of booking a second pickup.
+    courierAttemptAt: { type: Date },
     // Courier COD handling charge (basis points, 100 = 1%) copied from shipping
     // settings when the parcel is booked, so a later rate change in Settings never
     // alters an already-booked parcel. Unset = booked before this snapshot existed.
@@ -67,8 +85,12 @@ const orderSchema = new Schema(
         // Pricing
         subtotal: { type: Number, required: true },
         shippingCost: { type: Number, default: 0 },
-        shippingFreeReason: { type: String, default: '' }, // '' | product | coupon | threshold | quantity
+        shippingFreeReason: { type: String, default: '' }, // '' | product | coupon | threshold | quantity | admin (waived by staff)
         shippingZone: { type: String, default: '' }, // name of the delivery zone the rate came from (if any)
+        // How the delivery charge was set: 'auto' = the shipping rules; 'free' / 'custom' =
+        // staff waived it or typed the amount on a dashboard order.
+        shippingMode: { type: String, enum: ['auto', 'free', 'custom'], default: 'auto' },
+        deliveryArea: { type: String }, // inside_dhaka | outside_dhaka, when one was picked
         discount: { type: Number, default: 0 },
         total: { type: Number, required: true },
         couponCode: { type: String, default: '' },
@@ -101,20 +123,61 @@ const orderSchema = new Schema(
 
         note: { type: String, default: '' },
         timeline: { type: [timelineSchema], default: [] },
+
+        // Where the order came from. Orders placed before this field existed read as
+        // 'storefront'; which of them staff took by phone can no longer be told.
+        source: { type: String, enum: ['storefront', 'admin'], default: 'storefront' },
+        createdBy: { type: Schema.Types.ObjectId, ref: 'User' }, // the staff member, on 'admin' orders
     },
     { timestamps: true, toJSON: { virtuals: true } }
 );
 
-// Auto-generate order ID
+// Auto-generate the order ID (SK-0050 …) from the order counter.
 orderSchema.pre('save', async function (next) {
-    if (!this.orderId) {
-        const count = await (this.constructor as any).countDocuments();
-        this.orderId = `KM-${String(count + 1).padStart(4, '0')}`;
+    try {
+        if (!this.orderId) this.orderId = await nextOrderId();
+        next();
+    } catch (err) {
+        next(err as Error);
     }
-    next();
 });
 
 orderSchema.index({ user: 1, status: 1 });
 orderSchema.index({ status: 1, createdAt: -1 });
 
 export const Order = model('Order', orderSchema);
+
+/** The highest number any order ID carries, whatever its prefix (KM-0049 → 49); 0 when there are none. */
+export async function highestOrderNumber(): Promise<number> {
+    const rows = await Order.find({ orderId: { $regex: /^[A-Za-z]+-\d+$/ } }).select('orderId -_id').lean();
+    let max = 0;
+    for (const r of rows as { orderId?: string | null }[]) max = Math.max(max, parseOrderId(r.orderId)?.n || 0);
+    return max;
+}
+
+/**
+ * Raise the counter to the highest order number in use. $max never lowers it, so
+ * callers racing here are harmless. Seeds a missing counter, and repairs one that fell
+ * behind (see the duplicate-ID retry in OrderService.createOrder).
+ */
+export async function resyncOrderCounter(): Promise<void> {
+    const highest = await highestOrderNumber();
+    await OrderCounter.updateOne({ _id: ORDER_COUNTER_ID }, { $max: { seq: highest } }, { upsert: true });
+}
+
+/**
+ * The next order ID. One atomic $inc, so simultaneous orders never share a number and
+ * a deleted order's number is never handed out again. The first time (no counter yet)
+ * it seeds from the existing orders first, so the live shop continues after KM-0049
+ * with SK-0050.
+ */
+export async function nextOrderId(): Promise<string> {
+    const bump = (upsert: boolean) =>
+        OrderCounter.findOneAndUpdate({ _id: ORDER_COUNTER_ID }, { $inc: { seq: 1 } }, { upsert, new: true }).lean();
+    let counter: any = await bump(false);
+    if (!counter) {
+        await resyncOrderCounter();
+        counter = await bump(true);
+    }
+    return formatOrderId(Number(counter.seq));
+}

@@ -8,7 +8,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
  * Replicates baseApi auth: Bearer token from the redux auth slice, falling back
  * to localStorage('token'). SSR-safe — only runs in the browser.
  *
- * @param orderId order id (e.g. 'KM-0001')
+ * @param orderId order id (e.g. 'SK-0050'; older orders are KM-xxxx)
  * @throws Error on a non-ok response so callers can toast an error
  */
 export async function downloadInvoicePdf(orderId: string): Promise<void> {

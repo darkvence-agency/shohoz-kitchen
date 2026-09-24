@@ -58,10 +58,11 @@ const siteContentSchema = new Schema({
     },
 
     // ── Payment methods at checkout (super admin only: Settings → Payment methods) ──
-    // Cash on delivery is always offered. bKash, Nagad and bank transfer show only while
-    // `active` is on and an account is set; the customer pays manually and types where
-    // they paid from, the transaction ID and the time. Rocket and the COD toggle are no
-    // longer used (kept so older saved settings still load).
+    // Cash on delivery is always offered. bKash, Nagad, Rocket and bank transfer show only
+    // while `active` is on and an account is set; the customer pays manually and types
+    // where they paid from, the transaction ID and the time (checked by
+    // checkCheckoutPayment in order.controller.ts). The COD toggle is no longer used
+    // (kept so older saved settings still load).
     payment: {
         bkash:  { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: false } },
         rocket: { number: { type: String, default: '' }, accountType: { type: String, default: 'Personal' }, active: { type: Boolean, default: false } },

@@ -24,7 +24,8 @@ import config from './app/config';
 import { addDays, dhakaDayStart, dhakaToday } from './app/modules/analytics/analytics.period';
 import { User } from './app/modules/user/user.model';
 import { Product } from './app/modules/product/product.model';
-import { Order } from './app/modules/order/order.model';
+import { Order, highestOrderNumber, nextOrderId } from './app/modules/order/order.model';
+import { formatOrderId } from './app/modules/order/orderCounter.model';
 import { FraudFlag } from './app/modules/fraud/fraud.model';
 import { CourierPayout } from './app/modules/courierPayout/courierPayout.model';
 import { Supplier } from './app/modules/supplier/supplier.model';
@@ -196,15 +197,19 @@ async function seedDemo() {
 
     /* ── 3. Orders ── */
     const orders: any[] = [];
-    let orderNo = (await Order.countDocuments()) + 1;
+    // Real order numbers from the shop's order counter (SK-…), so a demo order can never
+    // take the number the next real order gets. A dry run only counts along, writing nothing.
+    let dryOrderNo = DRY ? await highestOrderNumber() : 0;
+    const orderId = async () => (DRY ? formatOrderId(++dryOrderNo) : nextOrderId());
     const makeOrder = async (opts: { customer: any; dayOffset: number; status: string; items?: { product: any; qty: number }[]; returnReason?: string }) => {
         const { customer, dayOffset, status } = opts;
         const addr = customer.shippingAddresses[0];
         const insideDhaka = addr.city === 'Dhaka';
         const lines = opts.items || Array.from({ length: pick([1, 1, 1, 2, 2, 3]) }, () => ({ product: pick(products), qty: pick([1, 1, 1, 2, 3]) }));
         const items = lines.map(({ product, qty }) => ({
-            _id: new Types.ObjectId(), product: product._id, name: product.name, thumbnail: product.thumbnail || '/images/placeholder-product.svg',
+            _id: new Types.ObjectId(), product: product._id, name: product.name, thumbnail: product.thumbnail || '/images/placeholder-product.webp',
             price: Number(product.price), quantity: qty, total: Number(product.price) * qty,
+            originalPrice: Number(product.price), discountPercent: 0, sku: product.sku || '',
         }));
         const subtotal = items.reduce((s, i) => s + i.total, 0);
         const shippingCost = insideDhaka ? 60 : 120;
@@ -237,7 +242,7 @@ async function seedDemo() {
             : (status === 'delivered' ? 'paid' : 'pending');
         const last = timeline[timeline.length - 1].createdAt;
         const order = await prepare(Order, {
-            orderId: `KM-${String(orderNo++).padStart(4, '0')}`,
+            orderId: await orderId(),
             user: customer._id,
             items,
             packages: [{ itemIds: items.map((i) => i._id), status, subtotal, timeline }],

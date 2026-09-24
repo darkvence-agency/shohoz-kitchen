@@ -4,15 +4,16 @@ import sendResponse from '../../utils/sendResponse';
 import OrderService from './order.service';
 import SiteContentService from '../siteContent/siteContent.service';
 import AppError from '../../utils/AppError';
+import { createAdminOrderBody } from './order.validation';
 
-const MANUAL_METHODS = ['bkash', 'nagad', 'bank'];
+const MANUAL_METHODS = ['bkash', 'nagad', 'rocket', 'bank'];
 
 /**
- * What a customer may pay with at checkout: cash on delivery always; bKash, Nagad and
- * bank transfer only while the super admin has them switched on with an account set
- * (Settings → Payment methods). A manual payment also needs where it was sent from,
- * the transaction ID and the time, which staff check before marking the order paid.
- * Orders staff create from the dashboard skip this.
+ * What a customer may pay with at checkout: cash on delivery always; bKash, Nagad,
+ * Rocket and bank transfer only while the super admin has them switched on with an
+ * account set (Settings → Payment methods). A manual payment also needs where it was
+ * sent from, the transaction ID and the time, which staff check before marking the
+ * order paid. Orders staff create from the dashboard skip this.
  */
 const checkCheckoutPayment = async (body: { paymentMethod?: string; paymentDetails?: Record<string, string> }) => {
     const method = body.paymentMethod || 'cod';
@@ -92,10 +93,19 @@ const OrderController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Order stats fetched', data: stats });
     }),
 
-    // POST /api/orders/admin (admin) — "New order" from the dashboard
+    // POST /api/orders/admin (admin) — "New order" from the dashboard.
+    // validateRequest only checks the body; parsing it again here drops unknown fields
+    // and fills the defaults (status / payment 'pending', shipping 'auto').
+    // The order is created even when setting its starting status or payment then fails:
+    // `warnings` says what still needs doing, and the message repeats it.
     createByAdmin: catchAsync(async (req: Request, res: Response) => {
-        const order = await OrderService.createAdminOrder(req.body);
-        sendResponse(res, { statusCode: 201, success: true, message: 'Order created', data: order });
+        const payload = createAdminOrderBody.parse(req.body);
+        const { order, warnings } = await OrderService.createAdminOrder(payload, req.user!.userId);
+        const plain = typeof order?.toJSON === 'function' ? order.toJSON() : order;
+        const message = warnings.length
+            ? `Order ${plain.orderId} was created, but not all of it went through. ${warnings.join(' ')}`
+            : 'Order created';
+        sendResponse(res, { statusCode: 201, success: true, message, data: { ...plain, warnings } });
     }),
 
     guestCheckout: catchAsync(async (req: Request, res: Response) => {

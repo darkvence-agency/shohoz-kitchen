@@ -12,10 +12,10 @@ import sendResponse from '../../utils/sendResponse';
  * POST /api/orders/admin/print  { ids: string[] }  (1–100 order _ids)
  *
  * Returns, in the requested order, just what the printed documents need: the lines
- * with each product's SKU (the variant SKU when the line was bought as a variant),
- * the shipping address, money (paid / due), the customer note and the Steadfast
- * consignment id. The documents themselves are rendered in the browser as HTML,
- * because customer names and addresses are often in Bangla.
+ * with each product's SKU (the variant SKU when the line was bought as a variant) and
+ * its list price / discount, the shipping address, money (paid / due), the customer
+ * note and the Steadfast consignment id. The documents themselves are rendered in the
+ * browser as HTML, because customer names and addresses are often in Bangla.
  *
  * Kept in its own file so the order controller / service stay untouched.
  */
@@ -33,6 +33,7 @@ export const orderPrintValidation = z.object({
 
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim());
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const round2 = (n: number) => Math.round(n * 100) / 100;
 const same = (a: unknown, b: unknown) => text(a).toLowerCase() === text(b).toLowerCase();
 
 /** Placeholder emails created for guest / phone orders — never printed. */
@@ -55,6 +56,12 @@ function money(o: any) {
 function matchVariant(variants: any[] | undefined, color?: string, size?: string): any | null {
     if (!color && !size) return null;
     return (variants || []).find((v: any) => (!color || same(v.color, color)) && (!size || same(v.size, size))) || null;
+}
+
+/** SKU for a line saved before the SKU was snapshotted on the order: looked up from the product now. */
+function lineSku(product: any, line: any): string {
+    const variant = matchVariant(product?.variants, line.color, line.size);
+    return text(variant?.sku) || text(product?.sku);
 }
 
 async function getOrdersPrintData(rawIds: string[]) {
@@ -108,21 +115,32 @@ async function getOrdersPrintData(rawIds: string[]) {
                     postalCode: text(addr.postalCode),
                 },
                 items: (o.items || []).map((it: any) => {
-                    const product = productById.get(String(it.product));
-                    const variant = matchVariant(product?.variants, it.color, it.size);
                     const quantity = num(it.quantity);
                     const price = num(it.price);
                     const total = num(it.total);
+                    // Lines saved since list prices were recorded carry originalPrice (the
+                    // "was" price per unit). `price` stays the unit price charged, so
+                    // originalPrice × qty − discount = total. Older lines have none: their
+                    // originalPrice is the price itself and the discount, as before, is any
+                    // gap between price × qty and the line total.
+                    const listed = num(it.originalPrice) > price ? num(it.originalPrice) : 0;
+                    const originalPrice = listed || price;
+                    const discountPercent = listed
+                        ? (num(it.discountPercent) > 0 ? num(it.discountPercent) : Math.round(((listed - price) / listed) * 100))
+                        : 0;
+                    const discount = listed
+                        ? round2((listed - price) * quantity)
+                        : Math.max(0, round2(price * quantity - total));
                     return {
                         name: text(it.name),
-                        sku: text(variant?.sku) || text(product?.sku),
+                        sku: text(it.sku) || lineSku(productById.get(String(it.product)), it),
                         color: text(it.color),
                         size: text(it.size),
                         quantity,
                         price,
-                        // Lines carry no discount of their own today; any gap between
-                        // price × qty and the line total is shown as the line discount.
-                        discount: Math.max(0, Math.round((price * quantity - total) * 100) / 100),
+                        originalPrice,
+                        discountPercent,
+                        discount,
                         total,
                     };
                 }),

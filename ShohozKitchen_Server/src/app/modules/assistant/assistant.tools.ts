@@ -40,10 +40,10 @@ export const TOOL_DEFS = [
         type: 'function',
         function: {
             name: 'track_order',
-            description: 'Look up the live status and timeline of an order by its order number (e.g. "KM-0033"). Returns only non-sensitive tracking info.',
+            description: 'Look up the live status and timeline of an order by its order number (e.g. "SK-0050"; older orders start with KM-, e.g. "KM-0033"). Returns only non-sensitive tracking info.',
             parameters: {
                 type: 'object',
-                properties: { orderId: { type: 'string', description: 'The order number, e.g. KM-0033.' } },
+                properties: { orderId: { type: 'string', description: 'The order number exactly as the customer gave it, e.g. SK-0050 or KM-0033.' } },
                 required: ['orderId'],
             },
         },
@@ -103,11 +103,11 @@ export const AssistantTools: Record<string, (args: any) => Promise<any>> = {
 
     async track_order({ orderId }: { orderId?: string }) {
         const id = String(orderId || '').trim();
-        if (!id) return { error: 'Please provide an order number like KM-0033.' };
+        if (!id) return { error: 'Please provide an order number like SK-0050.' };
         try {
             return await OrderService.trackOrder(id);
         } catch {
-            return { error: `No order found for "${id}". Ask the user to double-check the order number (format: KM-XXXX).` };
+            return { error: `No order found for "${id}". Ask the user to double-check the order number (format: SK-XXXX, or KM-XXXX for older orders).` };
         }
     },
 

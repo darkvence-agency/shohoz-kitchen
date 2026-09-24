@@ -38,6 +38,49 @@ export const createOrderValidation = z.object({
     }),
 });
 
+/**
+ * Dashboard "New order" (POST /orders/admin) only. Staff may set each line's price for
+ * this order, the delivery charge, and the payment / order status it starts in.
+ * Customers never reach this schema: their checkout keeps createOrderValidation, and
+ * the service ignores these fields unless the admin route asks it to honour them.
+ */
+const adminOrderItemValidation = orderItemValidation.extend({
+    color: z.string().optional(),
+    size: z.string().optional(),
+    // Price charged per unit on THIS order; the product's own price is not changed.
+    unitPrice: z.number().finite().min(0, 'Price cannot be negative').optional(),
+    // List ("was") price per unit, shown struck through when above the charged price.
+    originalPrice: z.number().finite().min(0, 'Price cannot be negative').optional(),
+});
+
+const adminShippingValidation = z
+    .object({
+        mode: z.enum(['auto', 'free', 'custom']),
+        amount: z.number().finite().min(0, 'Delivery charge cannot be negative').optional(),
+    })
+    .refine((s) => s.mode !== 'custom' || s.amount !== undefined, {
+        message: 'Enter the delivery charge',
+        path: ['amount'],
+    });
+
+export const createAdminOrderBody = z.object({
+    items: z.array(adminOrderItemValidation).min(1, 'At least one item required'),
+    shippingAddress: shippingAddressValidation,
+    paymentMethod: z.enum(['cod', 'bkash', 'nagad', 'rocket', 'bank']),
+    paymentDetails: paymentDetailsValidation,
+    paymentStatus: z.enum(['pending', 'paid']).default('pending'),
+    status: z.enum(['pending', 'confirmed', 'processing']).default('pending'),
+    deliveryArea: z.enum(['inside_dhaka', 'outside_dhaka']).optional(),
+    zoneId: z.string().optional(),
+    shipping: adminShippingValidation.default({ mode: 'auto' }),
+    couponCode: z.string().optional(),
+    note: z.string().optional(),
+});
+
+export const createAdminOrderValidation = z.object({ body: createAdminOrderBody });
+
+export type CreateAdminOrderPayload = z.infer<typeof createAdminOrderBody>;
+
 export const updateOrderStatusValidation = z.object({
     body: z.object({
         status: z.enum(['pending', 'confirmed', 'processing', 'shipped', 'on_the_way', 'out_for_delivery', 'delivery_attempt', 'delivered', 'cancelled', 'returned', 'refunded']),

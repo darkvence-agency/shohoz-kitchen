@@ -11,6 +11,10 @@ export interface IInvoiceItem {
     price: number;
     quantity: number;
     total: number;
+    // Only on lines sold below their list price (never on orders saved before list
+    // prices were recorded): the "was" price per unit and the whole percent off.
+    originalPrice?: number;
+    discountPercent?: number;
 }
 
 export interface IInvoiceData {
@@ -67,12 +71,24 @@ const buildCustomerInvoice = (order: any): IInvoiceData => {
         let name = item.name;
         const details = [item.color, item.size].filter(Boolean).join(', ');
         if (details) name += ` (${details})`;
+        const price = Number(item.price) || 0;
+        const listed = Number(item.originalPrice) || 0;
+        const discounted = listed > price;
         return {
             name,
-            sku: item.product?.sku || '',
+            // The SKU saved with the line (variant SKU included); older lines have none.
+            sku: item.sku || item.product?.sku || '',
             price: item.price,
             quantity: item.quantity,
             total: item.total,
+            ...(discounted
+                ? {
+                    originalPrice: listed,
+                    discountPercent: Number(item.discountPercent) > 0
+                        ? Number(item.discountPercent)
+                        : Math.round(((listed - price) / listed) * 100),
+                }
+                : {}),
         };
     });
 
@@ -179,17 +195,29 @@ const generateInvoicePdf = (invoice: IInvoiceData): Promise<Buffer> => {
             doc.fillColor('#000000').font('Helvetica').fontSize(9);
 
             for (const item of invoice.items) {
-                const rowH = 20;
+                // A line sold below its list price gets a second, smaller line under the
+                // name: the list price struck through and the percent off. Other rows
+                // are drawn exactly as before.
+                const was = item.originalPrice !== undefined && item.originalPrice > item.price;
+                const rowH = was ? 30 : 20;
                 if (y + rowH > doc.page.height - 120) {
                     doc.addPage();
                     y = 50;
                 }
                 doc.fillColor('#000000');
-                doc.text(item.name, cols.item + 6, y + 6, { width: contentWidth * 0.4 - 6, ellipsis: true });
+                // With the second line below, the name is held to one line so the two never overlap.
+                doc.text(item.name, cols.item + 6, y + 6, { width: contentWidth * 0.4 - 6, ellipsis: true, ...(was ? { height: 11 } : {}) });
                 doc.text(item.sku || '-', cols.sku, y + 6, { width: contentWidth * 0.16 });
                 doc.text(fmt(item.price), cols.price, y + 6, { width: contentWidth * 0.14, align: 'right' });
                 doc.text(String(item.quantity), cols.qty, y + 6, { width: contentWidth * 0.08, align: 'right' });
                 doc.text(fmt(item.total), cols.total, y + 6, { width: contentWidth * 0.14 - 6, align: 'right' });
+                if (was) {
+                    doc.fontSize(7.5).fillColor('#888888');
+                    doc.text('Was ', cols.item + 6, y + 18, { width: contentWidth * 0.4 - 6, continued: true })
+                        .text(fmt(item.originalPrice as number), { strike: true, continued: true })
+                        .text(`  (${item.discountPercent || 0}% off)`, { strike: false });
+                    doc.fontSize(9).fillColor('#000000');
+                }
                 doc.moveTo(left, y + rowH).lineTo(right, y + rowH).strokeColor('#EEEEEE').stroke();
                 y += rowH;
             }
@@ -246,7 +274,9 @@ const buildInvoiceEmailHtml = (invoice: IInvoiceData): string => {
         .map(
             (i) => `
         <tr>
-          <td style="padding:8px;border-bottom:1px solid #eee;">${i.name}</td>
+          <td style="padding:8px;border-bottom:1px solid #eee;">${i.name}${i.originalPrice !== undefined && i.originalPrice > i.price
+                ? `<br><span style="color:#888;font-size:12px;">Was <s>${fmt(i.originalPrice)}</s> (${i.discountPercent || 0}% off)</span>`
+                : ''}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">${i.quantity}</td>
           <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">${fmt(i.total)}</td>
         </tr>`
@@ -288,14 +318,22 @@ const buildInvoiceEmailHtml = (invoice: IInvoiceData): string => {
 
 // ── Auth-scoped public service methods ──────────────────────────────
 
+// Staff who may open any order may open its invoice too (same roles as GET /orders/admin/:id).
+const STAFF_ROLES = ['superadmin', 'admin', 'editor'];
+
+/** Staff see every invoice; a customer only the invoices of their own orders. */
+const assertCanView = (order: any, requester: { userId: string; role: string }) => {
+    if (!STAFF_ROLES.includes(requester.role) && order.user?._id?.toString() !== requester.userId) {
+        throw new AppError(403, 'You do not have permission to view this invoice');
+    }
+};
+
 const getInvoiceData = async (
     orderId: string,
     requester: { userId: string; role: string }
 ): Promise<IInvoiceData> => {
     const order = await fetchOrder(orderId);
-    if (requester.role !== 'admin' && order.user?._id?.toString() !== requester.userId) {
-        throw new AppError(403, 'You do not have permission to view this invoice');
-    }
+    assertCanView(order, requester);
     return buildCustomerInvoice(order);
 };
 
@@ -304,9 +342,7 @@ const getInvoicePdf = async (
     requester: { userId: string; role: string }
 ): Promise<Buffer> => {
     const order = await fetchOrder(orderId);
-    if (requester.role !== 'admin' && order.user?._id?.toString() !== requester.userId) {
-        throw new AppError(403, 'You do not have permission to view this invoice');
-    }
+    assertCanView(order, requester);
     return generateInvoicePdf(buildCustomerInvoice(order));
 };
 

@@ -24,7 +24,7 @@ import { trackBeginCheckout, trackPurchase } from '@/lib/marketing';
 const COUPON_STORAGE_KEY = 'shohozkitchen_applied_coupon';
 
 // ─── Payment methods offered ──────────────────────────────────────────────
-// Cash on Delivery always. bKash, Nagad and bank transfer only while the super admin
+// Cash on Delivery always. bKash, Nagad, Rocket and bank transfer only while the super admin
 // has them switched on with an account set (Settings → Payment methods); the customer
 // pays manually and tells us where from, the transaction ID and the time. SSLCommerz
 // is not offered for now (its gateway code stays in the payment module).
@@ -51,6 +51,13 @@ const PAYMENT_META = [
         kind: 'mobile' as const,
     },
     {
+        id: 'rocket',
+        label: 'Rocket',
+        sub: 'Send Money to our Rocket number',
+        color: '#8C3EC0',
+        kind: 'mobile' as const,
+    },
+    {
         id: 'bank',
         label: 'Bank Transfer',
         sub: 'Transfer to our bank account',
@@ -58,7 +65,7 @@ const PAYMENT_META = [
         kind: 'bank' as const,
     },
 ];
-const MANUAL_METHODS = ['bkash', 'nagad', 'bank'];
+const MANUAL_METHODS = ['bkash', 'nagad', 'rocket', 'bank'];
 
 const inputClass =
     "w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded text-sm text-gray-800 outline-none focus:border-[var(--color-primary)] transition-colors placeholder:text-gray-400";
@@ -268,7 +275,7 @@ const CheckoutPage = () => {
         if (!formData.address.trim()) e.address = 'Address is required';
         if (!formData.city.trim()) e.city = 'City is required';
         if (!area) e.deliveryArea = 'Choose Inside Dhaka or Outside Dhaka';
-        // bKash / Nagad / bank transfer need the payment's details so staff can check
+        // bKash / Nagad / Rocket / bank transfer need the payment's details so staff can check
         // it; COD is paid on delivery and needs none.
         if (MANUAL_METHODS.includes(selectedPayment)) {
             if (!paymentDetails.senderNumber.trim()) e.senderNumber = selectedPayment === 'bank' ? 'Enter the account you paid from' : 'Sender number is required';
@@ -280,7 +287,7 @@ const CheckoutPage = () => {
 
     const activeMethod = methods.find(m => m.id === selectedPayment) || methods[0]
         || { ...PAYMENT_META[0], number: '', accountType: '', active: true };
-    // The account the customer pays to: the bKash / Nagad number, or the bank account number.
+    // The account the customer pays to: the bKash / Nagad / Rocket number, or the bank account number.
     const payTo = activeMethod.kind === 'bank' ? (bank.accountNumber || '') : activeMethod.number;
 
     const copyNumber = () => {
@@ -348,7 +355,7 @@ const CheckoutPage = () => {
                 postalCode: formData.postalCode,
             },
             paymentMethod: selectedPayment,
-            // Only manual payments (bKash / Nagad / bank) carry the payment's details.
+            // Only manual payments (bKash / Nagad / Rocket / bank) carry the payment's details.
             paymentDetails: MANUAL_METHODS.includes(selectedPayment) ? {
                 senderNumber: paymentDetails.senderNumber,
                 transactionId: paymentDetails.transactionId,
@@ -361,7 +368,7 @@ const CheckoutPage = () => {
         };
 
         // Only an online gateway (SSLCommerz, not offered for now) hands the browser off
-        // after the order is created. COD and the manual bKash / Nagad / bank payments
+        // after the order is created. COD and the manual bKash / Nagad / Rocket / bank payments
         // land on the confirmation like before; staff check the payment afterwards.
         const isGatewayMethod = selectedPayment === 'sslcommerz';
 
@@ -770,7 +777,7 @@ const CheckoutPage = () => {
 
                                     {MANUAL_METHODS.includes(selectedPayment) && (
                                         <div className="pt-1">
-                                            {/* Where to pay: the bKash / Nagad number, or the bank account */}
+                                            {/* Where to pay: the bKash / Nagad / Rocket number, or the bank account */}
                                             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 flex items-center justify-between gap-3">
                                                 {activeMethod.kind === 'bank' ? (
                                                     <div className="min-w-0">

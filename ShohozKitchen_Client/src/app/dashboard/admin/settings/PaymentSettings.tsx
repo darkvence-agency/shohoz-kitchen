@@ -9,14 +9,25 @@ import { apiError } from './helpers';
 
 type Mobile = { number: string; accountType: string; active: boolean };
 type Bank = { bankName: string; accountName: string; accountNumber: string; branch: string; routingNumber: string; active: boolean };
-type Payment = { bkash: Mobile; nagad: Mobile; bank: Bank; instructions: string };
+type Payment = { bkash: Mobile; nagad: Mobile; rocket: Mobile; bank: Bank; instructions: string };
+type MobileKey = 'bkash' | 'nagad' | 'rocket';
 
 const MOBILE_NUMBER = /^01\d{9}$/;
+// A Rocket account number is the mobile number plus a check digit (12 digits); the plain
+// 11-digit number is accepted too.
+const ROCKET_NUMBER = /^01\d{9,10}$/;
+
+// The mobile wallets, in the order they are listed here and at checkout.
+const MOBILE_METHODS: ReadonlyArray<{ key: MobileKey; label: string; color: string; pattern: RegExp; format: string }> = [
+    { key: 'bkash', label: 'bKash', color: '#E2136E', pattern: MOBILE_NUMBER, format: '01XXXXXXXXX' },
+    { key: 'nagad', label: 'Nagad', color: '#F47920', pattern: MOBILE_NUMBER, format: '01XXXXXXXXX' },
+    { key: 'rocket', label: 'Rocket', color: '#8C3EC0', pattern: ROCKET_NUMBER, format: '01XXXXXXXXX or 01XXXXXXXXXX' },
+];
 
 type Saved = Partial<Record<string, string | boolean>>;
 
 // What the server has saved, with blanks for anything never set.
-function fromServer(p: { bkash?: Saved; nagad?: Saved; bank?: Saved; instructions?: string } = {}): Payment {
+function fromServer(p: { bkash?: Saved; nagad?: Saved; rocket?: Saved; bank?: Saved; instructions?: string } = {}): Payment {
     const str = (v: unknown) => (typeof v === 'string' ? v : '');
     const mobile = (m: Saved = {}): Mobile => ({
         number: str(m.number), accountType: str(m.accountType) || 'Personal', active: m.active === true,
@@ -25,6 +36,7 @@ function fromServer(p: { bkash?: Saved; nagad?: Saved; bank?: Saved; instruction
     return {
         bkash: mobile(p.bkash),
         nagad: mobile(p.nagad),
+        rocket: mobile(p.rocket),
         bank: {
             bankName: str(b.bankName), accountName: str(b.accountName), accountNumber: str(b.accountNumber),
             branch: str(b.branch), routingNumber: str(b.routingNumber), active: b.active === true,
@@ -35,9 +47,9 @@ function fromServer(p: { bkash?: Saved; nagad?: Saved; bank?: Saved; instruction
 
 function errorsOf(p: Payment): Record<string, string> {
     const e: Record<string, string> = {};
-    for (const [key, label] of [['bkash', 'bKash'], ['nagad', 'Nagad']] as const) {
+    for (const { key, label, pattern, format } of MOBILE_METHODS) {
         const n = p[key].number.replace(/[\s-]/g, '');
-        if (n && !MOBILE_NUMBER.test(n)) e[`${key}.number`] = `Enter the ${label} number as 01XXXXXXXXX`;
+        if (n && !pattern.test(n)) e[`${key}.number`] = `Enter the ${label} number as ${format}`;
         else if (p[key].active && !n) e[`${key}.number`] = `Add the ${label} number before showing it at checkout`;
     }
     if (p.bank.active) {
@@ -50,7 +62,7 @@ function errorsOf(p: Payment): Record<string, string> {
 
 /**
  * Settings → Payment methods (super admin only). Cash on delivery is always offered;
- * bKash, Nagad and bank transfer are shown at checkout only while switched on here.
+ * bKash, Nagad, Rocket and bank transfer are shown at checkout only while switched on here.
  */
 export default function PaymentSettings() {
     const { data, isLoading, isError, refetch } = useGetSiteContentQuery({});
@@ -75,15 +87,20 @@ function PaymentCard({ saved }: { saved: Payment }) {
     const hasError = Object.keys(errors).length > 0;
     const changed = JSON.stringify(draft) !== JSON.stringify(saved);
 
-    const setMobile = (key: 'bkash' | 'nagad', patch: Partial<Mobile>) =>
+    const setMobile = (key: MobileKey, patch: Partial<Mobile>) =>
         setDraft((d) => ({ ...d, [key]: { ...d[key], ...patch } }));
     const setBank = (patch: Partial<Bank>) => setDraft((d) => ({ ...d, bank: { ...d.bank, ...patch } }));
+    const cleanMobile = (m: Mobile): Mobile => ({ ...m, number: m.number.replace(/[\s-]/g, '') });
+    const rocketChanged = JSON.stringify(draft.rocket) !== JSON.stringify(saved.rocket);
 
     const onSave = async () => {
         try {
             await save({
-                bkash: { ...draft.bkash, number: draft.bkash.number.replace(/[\s-]/g, '') },
-                nagad: { ...draft.nagad, number: draft.nagad.number.replace(/[\s-]/g, '') },
+                bkash: cleanMobile(draft.bkash),
+                nagad: cleanMobile(draft.nagad),
+                // Rocket is sent only when it was changed, so saving bKash / Nagad / bank
+                // keeps working against a server that does not know Rocket yet.
+                ...(rocketChanged ? { rocket: cleanMobile(draft.rocket) } : {}),
                 bank: draft.bank,
                 instructions: draft.instructions,
             }).unwrap();
@@ -97,6 +114,7 @@ function PaymentCard({ saved }: { saved: Payment }) {
         'Cash on delivery',
         draft.bkash.active && 'bKash',
         draft.nagad.active && 'Nagad',
+        draft.rocket.active && 'Rocket',
         draft.bank.active && 'Bank transfer',
     ].filter(Boolean).join(', ');
 
@@ -112,11 +130,10 @@ function PaymentCard({ saved }: { saved: Payment }) {
             </Note>
 
             <div className="mt-5 space-y-4">
-                {(['bkash', 'nagad'] as const).map((key) => {
+                {MOBILE_METHODS.map(({ key, label, color }) => {
                     const m = draft[key];
-                    const label = key === 'bkash' ? 'bKash' : 'Nagad';
                     return (
-                        <MethodBlock key={key} title={label} color={key === 'bkash' ? '#E2136E' : '#F47920'}
+                        <MethodBlock key={key} title={label} color={color}
                             active={m.active} onActive={(v) => setMobile(key, { active: v })}>
                             <div className="grid gap-4 sm:grid-cols-[2fr_1fr]">
                                 <Field label={`${label} number`} error={errors[`${key}.number`]}>

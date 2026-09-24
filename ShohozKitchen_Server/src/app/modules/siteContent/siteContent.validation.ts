@@ -60,13 +60,16 @@ export const updateSeoValidation = z.object({
 // ── Checkout payment accounts (Settings → Payment methods) ──
 // Switching a method on needs its account set, so checkout never shows an empty number.
 const MOBILE_NUMBER = /^01\d{9}$/;
+// A Rocket account number is the 11-digit mobile number plus one check digit.
+// Some shops still enter the bare mobile number, so accept either length.
+const ROCKET_NUMBER = /^01\d{9,10}$/;
 const text = (max: number, label: string) => z.string().trim().max(max, `${label} is too long`).optional();
 
-const mobileAccount = (label: string) =>
+const mobileAccount = (label: string, pattern = MOBILE_NUMBER, shape = '01XXXXXXXXX') =>
     z
         .object({
             number: z
-                .preprocess((v) => (typeof v === 'string' ? v.replace(/[\s-]/g, '') : v), z.union([z.literal(''), z.string().regex(MOBILE_NUMBER, `Enter the ${label} number as 01XXXXXXXXX`)]))
+                .preprocess((v) => (typeof v === 'string' ? v.replace(/[\s-]/g, '') : v), z.union([z.literal(''), z.string().regex(pattern, `Enter the ${label} number as ${shape}`)]))
                 .optional(),
             accountType: z.enum(['Personal', 'Agent', 'Merchant']).optional(),
             active: z.boolean().optional(),
@@ -79,6 +82,7 @@ export const updatePaymentValidation = z.object({
         .object({
             bkash: mobileAccount('bKash').optional(),
             nagad: mobileAccount('Nagad').optional(),
+            rocket: mobileAccount('Rocket', ROCKET_NUMBER, '01XXXXXXXXXX (12 digits)').optional(),
             bank: z
                 .object({
                     bankName: text(80, 'Bank name'),
