@@ -8,6 +8,8 @@ import {
     FiXCircle,
     FiRotateCcw,
     FiDollarSign,
+    FiEdit2,
+    FiFileText,
 } from 'react-icons/fi';
 import type { ElementType } from 'react';
 
@@ -100,6 +102,33 @@ export const ORDER_STATUS_CONFIG: Record<string, OrderStatusConfig> = {
     },
 };
 
+/**
+ * Things that happen TO an order rather than states it is in. They are written into the
+ * timeline alongside the statuses, so the Activity Log needs labels for them — but they
+ * are not statuses, and the status dropdowns are built by walking ORDER_STATUS_CONFIG,
+ * which is why they live in their own map.
+ */
+const TIMELINE_EVENT_CONFIG: Record<string, OrderStatusConfig> = {
+    order_edited: {
+        label: 'Order Edited',
+        badgeBg: 'bg-gray-100',
+        badgeText: 'text-gray-700',
+        dot: 'bg-gray-400',
+        icon: FiEdit2,
+    },
+    admin_note: {
+        label: 'Note Added',
+        badgeBg: 'bg-gray-100',
+        badgeText: 'text-gray-700',
+        dot: 'bg-gray-400',
+        icon: FiFileText,
+    },
+    payment_paid: { label: 'Payment Received', badgeBg: 'bg-green-50', badgeText: 'text-green-700', dot: 'bg-green-500', icon: FiDollarSign },
+    payment_pending: { label: 'Payment Pending', badgeBg: 'bg-amber-50', badgeText: 'text-amber-700', dot: 'bg-amber-500', icon: FiDollarSign },
+    payment_failed: { label: 'Payment Failed', badgeBg: 'bg-rose-50', badgeText: 'text-rose-700', dot: 'bg-rose-500', icon: FiDollarSign },
+    payment_refunded: { label: 'Payment Refunded', badgeBg: 'bg-rose-50', badgeText: 'text-rose-700', dot: 'bg-rose-500', icon: FiDollarSign },
+};
+
 // Sane default for unknown/legacy statuses
 const DEFAULT_STATUS_CONFIG: OrderStatusConfig = {
     label: 'Unknown',
@@ -131,7 +160,7 @@ export const FORWARD_STEP_LABELS: Record<string, string> = FORWARD_STEPS.reduce(
 );
 
 export function getStatusConfig(status: string): OrderStatusConfig {
-    return ORDER_STATUS_CONFIG[status] ?? DEFAULT_STATUS_CONFIG;
+    return ORDER_STATUS_CONFIG[status] ?? TIMELINE_EVENT_CONFIG[status] ?? DEFAULT_STATUS_CONFIG;
 }
 
 // Index within FORWARD_STEPS (-1 for terminal/branch states)

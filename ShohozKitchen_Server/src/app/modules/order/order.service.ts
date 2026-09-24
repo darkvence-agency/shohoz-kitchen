@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Types } from 'mongoose';
 import { Order, resyncOrderCounter } from './order.model';
 import { ORDER_ID_PREFIXES, formatOrderId, parseOrderId } from './orderCounter.model';
-import type { CreateAdminOrderPayload } from './order.validation';
+import type { CreateAdminOrderPayload, UpdateAdminOrderPayload } from './order.validation';
 import { Product } from '../product/product.model';
 import { User } from '../user/user.model';
 import { Coupon } from '../coupon/coupon.model';
@@ -107,13 +107,64 @@ function stockInc(delta: number, variantId: unknown, extra: Record<string, numbe
     return { update: { $inc: inc }, options: { arrayFilters: [{ 'line._id': variantId }] } as Record<string, unknown> };
 }
 
+/**
+ * The amount a coupon's discount is computed on. For a product / category coupon only the
+ * matching lines count, not the whole subtotal; for every other coupon it is the subtotal.
+ * `staged` are the priced lines (each with its product document).
+ */
+function couponEligibleBase(coupon: any, subtotal: number, staged: { product: any; itemTotal: number }[]): number {
+    const applicableTo = coupon?.applicableTo || 'all';
+    if (coupon && applicableTo === 'specific_products') {
+        const set = new Set((coupon.specificProducts || []).map((x: any) => x.toString()));
+        return staged.reduce((s, st) => s + (set.has(st.product._id.toString()) ? st.itemTotal : 0), 0);
+    }
+    if (coupon && applicableTo === 'specific_categories') {
+        const set = new Set((coupon.specificCategories || []).map((x: any) => x.toString()));
+        return staged.reduce((s, st) => {
+            const cat = st.product.category ? st.product.category.toString() : null;
+            const sub = st.product.subCategory ? st.product.subCategory.toString() : null;
+            const child = st.product.childCategory ? st.product.childCategory.toString() : null;
+            const match = (cat && set.has(cat)) || (sub && set.has(sub)) || (child && set.has(child));
+            return s + (match ? st.itemTotal : 0);
+        }, 0);
+    }
+    return subtotal;
+}
+
+/**
+ * What an already-accepted coupon is worth against that base. Whether the coupon may be
+ * used at all (dates, limits, minimum spend) is the caller's business: checkout decides it
+ * before redeeming, while an edit re-prices a coupon the order has already redeemed.
+ */
+function couponValue(coupon: any, eligibleBase: number): { discount: number; freeShipping: boolean } {
+    if (coupon.discountType === 'free_shipping') return { discount: 0, freeShipping: true };
+    let discount: number;
+    if (coupon.discountType === 'percentage') {
+        discount = (eligibleBase * coupon.discountValue) / 100;
+        if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+    } else {
+        discount = coupon.discountValue;
+    }
+    // Never let the discount exceed the eligible base (guards against negative totals).
+    return { discount: Math.min(discount, eligibleBase), freeShipping: false };
+}
+
+/**
+ * The variant _id an order line refers to, looked up from the product as it stands now.
+ * null when the line has no colour / size, or when the variant it named is gone — in both
+ * cases only the product's own stock moves. The product is read without the `active` /
+ * `isDeleted` filters on purpose: stock owed back to a product still has to go back once
+ * the product has been drafted or removed from the shop.
+ */
+async function lineVariantId(item: { product: unknown; color?: string; size?: string }): Promise<unknown> {
+    if (!item.color && !item.size) return null;
+    const p: any = await Product.findById(item.product).select('variants._id variants.color variants.size').lean();
+    return matchVariant(p?.variants, item.color, item.size)?._id || null;
+}
+
 /** Put an order line's quantity back into stock; returns the product's stock + cost after. */
 async function restockLine(item: any) {
-    let variantId: unknown = null;
-    if (item.color || item.size) {
-        const p: any = await Product.findById(item.product).select('variants._id variants.color variants.size').lean();
-        variantId = matchVariant(p?.variants, item.color, item.size)?._id || null;
-    }
+    const variantId = await lineVariantId(item);
     const { update, options } = stockInc(item.quantity, variantId);
     return Product.findByIdAndUpdate(item.product, update, { ...options, new: true })
         .select('stock costPrice')
@@ -136,7 +187,8 @@ function restockEntry(order: any, item: any, after: any, type: 'cancel' | 'retur
     };
 }
 
-function logRestock(entries: (StockMovementInput | null)[]) {
+/** Write ledger rows, dropping the ones there was nothing to record for. */
+function logMovements(entries: (StockMovementInput | null)[]) {
     try {
         logStockMovements(entries.filter(Boolean) as StockMovementInput[]);
     } catch {
@@ -157,6 +209,56 @@ async function closeFraudFlag(orderId: unknown, status: string, actorId?: string
     } catch {
         // never block the order flow
     }
+}
+
+// ── Editing an order ────────────────────────────────────────────
+
+// The statuses an order's details may still be changed in. Past 'processing' it is packed
+// or on its way, and once it is cancelled / returned / refunded its stock has already gone
+// back — an edit then would move the same units a second time.
+const EDITABLE_STATUSES = ['pending', 'confirmed', 'processing'];
+
+/**
+ * Why this order cannot be edited, or null when it can be. Steadfast offers no edit and no
+ * cancel, so once a parcel is with them nothing typed here would ever reach the rider: the
+ * shop chose to refuse the edit rather than let the two quietly disagree.
+ */
+function editBlockedReason(order: any): string | null {
+    for (const pkg of order.packages || []) {
+        if (pkg.consignmentId) {
+            return 'This order is already booked with Steadfast, and their API has no way to change a parcel. Make the correction in the Steadfast panel.';
+        }
+        if (pkg.courierAttemptAt) {
+            return 'A send to Steadfast for this order has not finished yet. Use the courier card to check it first, then edit.';
+        }
+        if (pkg.trackingNumber) {
+            return 'This order already carries a courier tracking number, so it can no longer be edited.';
+        }
+    }
+    if (!EDITABLE_STATUSES.includes(order.status)) {
+        return `An order that is "${order.status}" can no longer be edited — only its status and notes can still change.`;
+    }
+    return null;
+}
+
+/**
+ * The `freeShipping` flag per line, which the delivery-charge rules need. An edit that
+ * restaged its lines already holds the products, so they are not read a second time.
+ */
+async function freeShippingFlags(items: any[], staged: { product: any }[]): Promise<{ freeShipping: boolean }[]> {
+    if (staged.length) return staged.map((s) => ({ freeShipping: Boolean(s.product?.shippingConfig?.freeShipping) }));
+    const products = await Product.find({ _id: { $in: items.map((it) => it.product) } }).select('shippingConfig').lean();
+    const byId = new Map(products.map((p: any) => [String(p._id), Boolean(p.shippingConfig?.freeShipping)]));
+    return items.map((it) => ({ freeShipping: byId.get(String(it.product)) || false }));
+}
+
+/** How an order line is matched against the same line in an edit: product + colour + size. */
+function lineKey(product: unknown, color?: string, size?: string): string {
+    return [
+        String(product),
+        String(color || '').trim().toLowerCase(),
+        String(size || '').trim().toLowerCase(),
+    ].join('|');
 }
 
 // ── Status helpers ──────────────────────────────────────────────
@@ -309,23 +411,8 @@ const OrderService = {
             const coupon: any = await Coupon.findOne({ code: couponCode.toUpperCase(), isActive: true });
             const now = new Date();
 
-            // Eligible base = the amount the discount is computed on. For product/category
-            // coupons only the matching cart items count (not the whole subtotal).
-            let eligibleBase = subtotal;
             const applicableTo = coupon?.applicableTo || 'all';
-            if (coupon && applicableTo === 'specific_products') {
-                const set = new Set((coupon.specificProducts || []).map((x: any) => x.toString()));
-                eligibleBase = stagedItems.reduce((s: number, st: any) => s + (set.has(st.product._id.toString()) ? st.itemTotal : 0), 0);
-            } else if (coupon && applicableTo === 'specific_categories') {
-                const set = new Set((coupon.specificCategories || []).map((x: any) => x.toString()));
-                eligibleBase = stagedItems.reduce((s: number, st: any) => {
-                    const cat = st.product.category ? st.product.category.toString() : null;
-                    const sub = st.product.subCategory ? st.product.subCategory.toString() : null;
-                    const child = st.product.childCategory ? st.product.childCategory.toString() : null;
-                    const match = (cat && set.has(cat)) || (sub && set.has(sub)) || (child && set.has(child));
-                    return s + (match ? st.itemTotal : 0);
-                }, 0);
-            }
+            const eligibleBase = couponEligibleBase(coupon, subtotal, stagedItems);
 
             // How many times THIS customer has already redeemed (supports usagePerUser > 1).
             const userUses = (coupon?.usedBy || []).filter((id: any) => id.toString() === userId.toString()).length;
@@ -341,16 +428,7 @@ const OrderService = {
 
             if (usable) {
                 appliedCoupon = coupon;
-                if (coupon.discountType === 'free_shipping') {
-                    couponFreeShipping = true;
-                } else if (coupon.discountType === 'percentage') {
-                    discount = (eligibleBase * coupon.discountValue) / 100;
-                    if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
-                } else {
-                    discount = coupon.discountValue;
-                }
-                // Never let the discount exceed the eligible base (guards against negative totals).
-                discount = Math.min(discount, eligibleBase);
+                ({ discount, freeShipping: couponFreeShipping } = couponValue(coupon, eligibleBase));
             }
         }
 
@@ -748,6 +826,359 @@ const OrderService = {
         return { order: latest, warnings };
     },
 
+    /**
+     * Edit an order that has not gone anywhere yet: who it is for, where it is going, how it
+     * is being paid and what is on it. Only the parts staff changed arrive — everything left
+     * out keeps exactly the value it had.
+     *
+     * The lines are the delicate part. `payload.items` replaces them wholesale, so what has
+     * to move in stock is the difference between the lines the order held and the ones it
+     * will hold. Extra units are claimed with the same conditional decrement checkout uses,
+     * so an edit can never oversell; units the edit gives up go back only once the order has
+     * actually been saved, so a failure half-way through leaves stock untouched.
+     *
+     * The order stays with the customer account it was placed against even when the phone
+     * number on it is corrected: moving an order between two customers would rewrite both
+     * their histories, which is more than a typo fix should do.
+     */
+    async updateOrderDetails(id: string, payload: UpdateAdminOrderPayload, actorId?: string) {
+        const order = await Order.findById(id);
+        if (!order) throw new AppError(404, 'Order not found');
+
+        const blocked = editBlockedReason(order);
+        if (blocked) throw new AppError(409, blocked);
+
+        const editsItems = Array.isArray(payload.items);
+        if (editsItems && (order.packages || []).length > 1) {
+            throw new AppError(409, 'This order ships as more than one package, so its lines cannot be edited here.');
+        }
+
+        const asPlain = (v: any) => (typeof v?.toObject === 'function' ? v.toObject() : { ...(v || {}) });
+        const oldItems: any[] = (order.items || []).map(asPlain);
+        const changed: string[] = [];
+
+        // ── Who the order is for, and where it goes ──
+        const currentAddress = asPlain(order.shippingAddress);
+        let shippingAddress = currentAddress;
+        if (payload.shippingAddress) {
+            const next = payload.shippingAddress;
+            if (!String(next.fullName || '').trim()) throw new AppError(400, 'Customer name is required');
+            // The same normalisation the dashboard's new-order form uses, so a number typed
+            // as "+880 1712-345678" is stored the one way everything else searches for.
+            const phone = normalizePhone(next.phone);
+            if (!/^01\d{9}$/.test(phone)) {
+                throw new AppError(400, 'Enter a valid 11-digit mobile number (01XXXXXXXXX)');
+            }
+            shippingAddress = { ...currentAddress, ...next, phone };
+            const fields = ['fullName', 'phone', 'email', 'address', 'area', 'city', 'postalCode'] as const;
+            if (fields.some((f) => String(shippingAddress[f] ?? '') !== String(currentAddress[f] ?? ''))) {
+                changed.push('customer details');
+            }
+        }
+
+        // ── The lines, and the stock they move ──
+        const staged: { product: any; variant: any; item: any; unitPrice: number; originalPrice: number; priceOverridden: boolean; itemTotal: number }[] = [];
+        let newItems: any[] = oldItems;
+        let moves: any[] = [];
+        // Units claimed for this edit; handed back if anything later in the edit fails.
+        const reserved: { product: unknown; variantId: unknown; quantity: number; balanceAfter: number; unitCost: number; color: string; size: string }[] = [];
+        const rollbackReserved = async () => {
+            for (const r of reserved) {
+                const { update, options } = stockInc(r.quantity, r.variantId, { totalSold: -r.quantity });
+                await Product.findByIdAndUpdate(r.product, update, options);
+            }
+        };
+
+        if (editsItems) {
+            const existingByKey = new Map<string, any>(oldItems.map((it) => [lineKey(it.product, it.color, it.size), it]));
+            const seen = new Set<string>();
+
+            for (const item of payload.items!) {
+                const key = lineKey(item.product, item.color, item.size);
+                if (seen.has(key)) {
+                    throw new AppError(400, 'The same product and option is on two lines — put it on one line with the full quantity.');
+                }
+                seen.add(key);
+
+                const existing = existingByKey.get(key);
+                // A product that has since been drafted may stay on the order it is already
+                // on; only a line being ADDED now has to be one the shop still sells.
+                const filter: Record<string, unknown> = { _id: item.product, isDeleted: false };
+                if (!existing) filter.status = 'active';
+                const product = await Product.findOne(filter);
+                if (!product) throw new AppError(404, 'That product is no longer on sale, so it cannot be added to this order.');
+
+                const variant = matchVariant(product.variants, item.color, item.size);
+                const catalogPrice = catalogUnitPrice(product, variant);
+                // A line staff did not re-price keeps what it was sold at. Reading today's
+                // catalogue here would silently re-price an old order because the shop has
+                // changed a price since it was placed.
+                const unitPrice = isAmount(item.unitPrice)
+                    ? round2(item.unitPrice)
+                    : (existing ? Number(existing.price) || 0 : catalogPrice);
+                const listFallback = existing && Number(existing.originalPrice) > 0
+                    ? Number(existing.originalPrice)
+                    : Math.max(catalogListPrice(product, variant, catalogPrice), unitPrice);
+                const originalPrice = isAmount(item.originalPrice) ? round2(item.originalPrice) : listFallback;
+
+                staged.push({
+                    product,
+                    variant,
+                    item,
+                    unitPrice,
+                    originalPrice,
+                    // "Custom price" means exactly this: the line is not at the shop's price.
+                    priceOverridden: round2(unitPrice) !== round2(catalogPrice),
+                    itemTotal: round2(unitPrice * item.quantity),
+                });
+            }
+
+            newItems = staged.map((s) => {
+                const existing = existingByKey.get(lineKey(s.item.product, s.item.color, s.item.size));
+                return {
+                    // Keeping a line's _id keeps the package's itemIds and its history pointing
+                    // at the same line; only a line that is new to the order gets a new one.
+                    _id: existing?._id || new Types.ObjectId(),
+                    product: s.product._id,
+                    // A line already on the order keeps the name and picture it was sold under,
+                    // even if the product has been renamed since.
+                    name: existing?.name || s.product.name,
+                    thumbnail: existing?.thumbnail || (s.variant?.images?.length ? s.variant.images[0] : s.product.thumbnail),
+                    price: s.unitPrice,
+                    quantity: s.item.quantity,
+                    total: s.itemTotal,
+                    color: s.item.color || '',
+                    size: s.item.size || '',
+                    originalPrice: s.originalPrice,
+                    discountPercent: discountPercentOf(s.originalPrice, s.unitPrice),
+                    priceOverridden: s.priceOverridden,
+                    sku: String(s.variant?.sku || '').trim() || String(s.product.sku || '').trim(),
+                };
+            });
+
+            // What stock has to move: the new quantity less the old one, per line.
+            const counts = new Map<string, any>();
+            const tally = (it: any, field: 'before' | 'after', onOrder: boolean) => {
+                const key = lineKey(it.product, it.color, it.size);
+                const row = counts.get(key)
+                    || { product: it.product, color: it.color || '', size: it.size || '', name: it.name || '', before: 0, after: 0, onOrder: false };
+                row[field] += Number(it.quantity) || 0;
+                row.onOrder = row.onOrder || onOrder;
+                if (!row.name && it.name) row.name = it.name;
+                counts.set(key, row);
+            };
+            for (const it of oldItems) tally(it, 'before', true);
+            for (const it of newItems) tally(it, 'after', false);
+
+            moves = [...counts.values()]
+                .map((r) => ({ ...r, delta: r.after - r.before }))
+                .filter((r) => r.delta !== 0);
+            for (const m of moves) m.variantId = await lineVariantId(m);
+
+            // Claim the extra units first, the same conditional decrement checkout uses: two
+            // people editing towards the last unit cannot both get it.
+            for (const m of moves.filter((x) => x.delta > 0)) {
+                const { update, options } = stockInc(-m.delta, m.variantId, { totalSold: m.delta });
+                const filter: Record<string, unknown> = { _id: m.product, isDeleted: false, stock: { $gte: m.delta } };
+                if (!m.onOrder) filter.status = 'active';
+                const claimed: any = await Product.findOneAndUpdate(filter, update, options);
+                if (!claimed) {
+                    await rollbackReserved();
+                    throw new AppError(400, `There is not enough stock for "${m.name}".`);
+                }
+                reserved.push({
+                    product: m.product,
+                    variantId: m.variantId,
+                    quantity: m.delta,
+                    // `claimed` is the product as it was just before the decrement.
+                    balanceAfter: (Number(claimed.stock) || 0) - m.delta,
+                    unitCost: Number(claimed.costPrice) || 0,
+                    color: m.color,
+                    size: m.size,
+                });
+            }
+            if (moves.length) changed.push('items');
+        }
+
+        // ── What it comes to ──
+        const subtotal = round2(newItems.reduce((sum: number, it: any) => sum + (Number(it.total) || 0), 0));
+
+        // The coupon was redeemed when the order was placed, so it is only re-priced here —
+        // never re-checked against its limits, and never counted as a second redemption.
+        let discount = Number(order.discount) || 0;
+        const coupon: any = order.couponCode
+            ? await Coupon.findOne({ code: String(order.couponCode).toUpperCase() })
+            : null;
+        let couponFreeShipping = coupon?.discountType === 'free_shipping';
+        if (editsItems) {
+            if (coupon) {
+                ({ discount, freeShipping: couponFreeShipping } = couponValue(coupon, couponEligibleBase(coupon, subtotal, staged)));
+            } else {
+                // No coupon on file for the code: keep the amount, but never above the subtotal.
+                discount = Math.min(discount, subtotal);
+            }
+        }
+
+        const area = isDeliveryArea(payload.deliveryArea)
+            ? payload.deliveryArea
+            : (isDeliveryArea(order.deliveryArea) ? order.deliveryArea : undefined);
+        const mode: 'auto' | 'free' | 'custom' = payload.shipping?.mode || (order.shippingMode as any) || 'auto';
+        let shippingCost: number;
+        let freeReason: string | null = null;
+        let zoneName = order.shippingZone || '';
+        if (mode === 'free') {
+            shippingCost = 0;
+            freeReason = 'admin';
+        } else if (mode === 'custom') {
+            const amount = payload.shipping?.amount ?? Number(order.shippingCost);
+            if (!isAmount(amount)) throw new AppError(400, 'Enter the delivery charge');
+            shippingCost = round2(amount);
+            if (shippingCost === 0) freeReason = 'admin';
+        } else {
+            const quote = await computeShippingCost({
+                city: shippingAddress?.city || '',
+                subtotal,
+                items: await freeShippingFlags(newItems, staged),
+                totalQuantity: newItems.reduce((n: number, it: any) => n + (Number(it.quantity) || 0), 0),
+                couponFreeShipping,
+                zoneId: payload.zoneId,
+                area,
+            });
+            shippingCost = quote.shippingCost;
+            freeReason = quote.freeReason;
+            zoneName = quote.zoneName || '';
+        }
+        const total = round2(Math.max(0, subtotal - discount) + shippingCost);
+        if (round2(Number(order.shippingCost) || 0) !== shippingCost || (order.shippingMode || 'auto') !== mode) {
+            changed.push('delivery charge');
+        }
+
+        // ── How it is paid ──
+        const paymentMethod = payload.paymentMethod || order.paymentMethod;
+        const currentPayment = asPlain(order.paymentDetails);
+        // Cash on delivery carries no reference of its own: switching to it drops what the
+        // previous method had recorded, so no stale transaction id survives on the invoice.
+        const paymentDetails = paymentMethod === 'cod'
+            ? { senderNumber: '', transactionId: '', paymentTime: '' }
+            : { ...currentPayment, ...(payload.paymentDetails || {}) };
+        if (paymentMethod !== order.paymentMethod
+            || JSON.stringify(paymentDetails) !== JSON.stringify({ senderNumber: '', transactionId: '', paymentTime: '', ...currentPayment })) {
+            changed.push('payment');
+        }
+        if (payload.note !== undefined && payload.note !== (order.note || '')) changed.push('note');
+
+        // ── Save it, and only then let go of the stock this edit gave up ──
+        const actor = actorId ? await User.findById(actorId).select('firstName lastName email').lean() : null;
+        const actorName = actor
+            ? [actor.firstName, actor.lastName].filter(Boolean).join(' ').trim() || actor.email || ''
+            : '';
+
+        const set: Record<string, unknown> = {
+            shippingAddress,
+            subtotal,
+            shippingCost,
+            shippingFreeReason: freeReason || '',
+            shippingZone: zoneName || '',
+            shippingMode: mode,
+            discount: round2(discount),
+            total,
+            paymentMethod,
+            paymentDetails,
+            transactionId: paymentDetails.transactionId || '',
+        };
+        if (area) set.deliveryArea = area;
+        if (payload.note !== undefined) set.note = payload.note;
+        if (editsItems) {
+            set.items = newItems;
+            // The package's lines and its subtotal follow the order's: the courier's COD
+            // amount is built from them.
+            set.packages = (order.packages || []).map((p: any, idx: number) => {
+                const pkg = asPlain(p);
+                if (idx === 0) {
+                    pkg.itemIds = newItems.map((it) => it._id);
+                    pkg.subtotal = subtotal;
+                }
+                return pkg;
+            });
+        }
+
+        // Guarded on the version the edit was computed from: a second save of the same form,
+        // or another editor saving first, is refused instead of moving the stock twice.
+        const version = (order as any).__v;
+        const saved = await Order.updateOne(
+            { _id: order._id, __v: version },
+            {
+                $set: set,
+                $inc: { __v: 1 },
+                $push: {
+                    timeline: {
+                        status: 'order_edited',
+                        note: changed.length ? `Edited: ${changed.join(', ')}` : 'Edited',
+                        actor: actorId || null,
+                        actorName,
+                        createdAt: new Date(),
+                    },
+                },
+            },
+        );
+        if (saved.matchedCount === 0) {
+            await rollbackReserved();
+            throw new AppError(409, 'Someone changed this order while you were editing it. Reopen it and make the change again.');
+        }
+
+        // Units this edit gave up go back now that the order itself is definitely saved.
+        const released: { product: unknown; quantity: number; balanceAfter: number; unitCost: number; color: string; size: string }[] = [];
+        for (const m of moves.filter((x) => x.delta < 0)) {
+            const give = -m.delta;
+            const { update, options } = stockInc(give, m.variantId, { totalSold: -give });
+            const after: any = await Product.findByIdAndUpdate(m.product, update, { ...options, new: true })
+                .select('stock costPrice')
+                .lean();
+            released.push({
+                product: m.product,
+                quantity: give,
+                balanceAfter: Number(after?.stock) || 0,
+                unitCost: Number(after?.costPrice) || 0,
+                color: m.color,
+                size: m.size,
+            });
+        }
+
+        const ledgerNote = `Order ${order.orderId || order._id} edited`;
+        logMovements([
+            ...reserved.map((r) => ({
+                product: r.product as any,
+                type: 'sale' as const,
+                quantity: -r.quantity,
+                balanceAfter: r.balanceAfter,
+                variant: variantOf(r),
+                unitCost: r.unitCost > 0 ? r.unitCost : null,
+                note: ledgerNote,
+                order: order._id,
+                createdBy: actorId || null,
+            })),
+            ...released.map((r) => ({
+                product: r.product as any,
+                type: 'adjustment' as const,
+                quantity: r.quantity,
+                balanceAfter: r.balanceAfter,
+                variant: variantOf(r),
+                unitCost: r.unitCost > 0 ? r.unitCost : null,
+                note: ledgerNote,
+                order: order._id,
+                createdBy: actorId || null,
+            })),
+        ]);
+
+        // The customer's lifetime spend follows the order's new total.
+        const spendDelta = round2(total - (Number(order.total) || 0));
+        if (spendDelta !== 0) {
+            await User.findByIdAndUpdate(order.user, { $inc: { totalSpent: spendDelta } });
+        }
+
+        return this.getOrderById(order._id.toString());
+    },
+
     // actorId (optional) → the admin shown as "by" on the stock ledger when a cancel restocks.
     // guard (optional) → extra conditions the order must still meet when the change is
     // claimed (Fraud check passes "still cancellable and not booked with the courier").
@@ -819,7 +1250,7 @@ const OrderService = {
                 const after = await restockLine(item);
                 ledger.push(restockEntry(order, item, after, 'cancel', `Order ${order.orderId || order._id} cancelled`, actorId));
             }
-            logRestock(ledger);
+            logMovements(ledger);
         }
 
         await closeFraudFlag(order._id, status, actorId);
@@ -953,7 +1384,7 @@ const OrderService = {
             const after = await restockLine(item);
             ledger.push(restockEntry(order, item, after, 'cancel', `Order ${order.orderId || order._id} cancelled by the customer`, userId));
         }
-        logRestock(ledger);
+        logMovements(ledger);
 
         return order;
     },
@@ -1018,7 +1449,7 @@ const OrderService = {
                 ledger.push(restockEntry(order, it, after, 'return', ledgerNote || `Order ${order.orderId || order._id} returned`));
             }
         }
-        logRestock(ledger);
+        logMovements(ledger);
     },
 
     // Mark the order's package as returned, then recompute order status.

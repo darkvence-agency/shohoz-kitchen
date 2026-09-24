@@ -244,12 +244,24 @@ const ProductService = {
         // shopper's own ?status=draft can only narrow the result, never widen it.
         const draftFilter: Record<string, unknown> | undefined = staff ? undefined : { status: { $ne: 'draft' } };
 
+        // ids=a,b,c → exactly those products. The dashboard's "Edit order" needs the full
+        // document (variants, stock, today's price) for each product already on an order,
+        // and those are not necessarily on the first page of anything.
+        const rawIds = typeof query.ids === 'string' ? query.ids : '';
+        const wantedIds = rawIds.split(',').map((s) => s.trim()).filter((s) => /^[0-9a-fA-F]{24}$/.test(s));
+        const idFilter: Record<string, unknown> | undefined = rawIds.trim()
+            // A malformed list must return nothing rather than the whole catalogue.
+            ? { _id: { $in: wantedIds } }
+            : undefined;
+        delete query.ids;
+
         const extraFilters: Record<string, unknown>[] = [
             brandFilter,
             ratingFilter,
             stockFilter,
             categoryFilter,
             draftFilter,
+            idFilter,
         ].filter(Boolean) as Record<string, unknown>[];
         const extraFilterMerge: Record<string, unknown> =
             extraFilters.length > 0 ? { $and: extraFilters } : {};

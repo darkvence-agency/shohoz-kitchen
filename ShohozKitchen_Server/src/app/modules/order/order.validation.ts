@@ -81,6 +81,36 @@ export const createAdminOrderValidation = z.object({ body: createAdminOrderBody 
 
 export type CreateAdminOrderPayload = z.infer<typeof createAdminOrderBody>;
 
+/**
+ * Dashboard "Edit order" (PATCH /orders/admin/:id). Every group is optional, because the
+ * form sends only what staff touched; each one that IS sent is checked exactly as the
+ * create route checks it. Prices are accepted here for the same reason as on the create
+ * route — a customer's own checkout never reaches this schema.
+ *
+ * Deliberately absent: `status` and `paymentStatus` keep their own endpoints (the order
+ * status drives stock and the courier; the payment status stays with admins), and
+ * `couponCode`, because a coupon's redemption was already counted when the order was
+ * placed. Staff lower a line's price instead.
+ */
+const updateAdminOrderBody = z
+    .object({
+        items: z.array(adminOrderItemValidation).min(1, 'An order must keep at least one item').optional(),
+        shippingAddress: shippingAddressValidation.optional(),
+        paymentMethod: z.enum(['cod', 'bkash', 'nagad', 'rocket', 'bank']).optional(),
+        paymentDetails: paymentDetailsValidation,
+        deliveryArea: z.enum(['inside_dhaka', 'outside_dhaka']).optional(),
+        zoneId: z.string().optional(),
+        shipping: adminShippingValidation.optional(),
+        note: z.string().max(2000, 'Note is too long').optional(),
+    })
+    .refine((body) => Object.values(body).some((v) => v !== undefined), {
+        message: 'Nothing was changed',
+    });
+
+export const updateAdminOrderValidation = z.object({ body: updateAdminOrderBody });
+
+export type UpdateAdminOrderPayload = z.infer<typeof updateAdminOrderBody>;
+
 export const updateOrderStatusValidation = z.object({
     body: z.object({
         status: z.enum(['pending', 'confirmed', 'processing', 'shipped', 'on_the_way', 'out_for_delivery', 'delivery_attempt', 'delivered', 'cancelled', 'returned', 'refunded']),

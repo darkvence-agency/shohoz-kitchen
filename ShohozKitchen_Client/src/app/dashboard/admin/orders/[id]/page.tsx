@@ -46,6 +46,7 @@ import {
 import { downloadInvoicePdf } from '@/lib/downloadInvoice';
 import FraudOrderBanner from '../../fraud-check/FraudOrderBanner';
 import PrintOrdersModal, { type PrintKind } from '@/components/admin/print/PrintOrdersModal';
+import EditOrderModal from '@/components/admin/orders/EditOrderModal';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 
@@ -92,6 +93,25 @@ interface OrderPackage {
     trackingNumber?: string;
     courierStatus?: string;
     courierBookedAt?: string;
+    courierAttemptAt?: string;
+}
+
+// An order may still be corrected while it is one of these and no parcel has gone to the
+// courier. Mirrors EDITABLE_STATUSES / editBlockedReason() in
+// ShohozKitchen_Server/src/app/modules/order/order.service.ts — change the two together.
+// The server decides; this only decides whether to offer the button, and says why not.
+const EDITABLE_STATUSES = ['pending', 'confirmed', 'processing'];
+
+function editBlockedReason(order: { status?: string; packages?: OrderPackage[] }): string | null {
+    for (const pkg of order.packages || []) {
+        if (pkg.consignmentId) return 'Booked with Steadfast — their API cannot change a parcel, so edit it in the Steadfast panel.';
+        if (pkg.courierAttemptAt) return 'A send to Steadfast has not finished. Check the courier card below first.';
+        if (pkg.trackingNumber) return 'This order already carries a courier tracking number.';
+    }
+    if (!EDITABLE_STATUSES.includes(order.status || '')) {
+        return `An order that is ${getStatusConfig(order.status || '').label.toLowerCase()} can no longer be edited.`;
+    }
+    return null;
 }
 
 /** The order fields a Steadfast booking reads. */
@@ -315,6 +335,7 @@ export default function OrderDetailsPage() {
     const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('');
     const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
     const [printKind, setPrintKind] = useState<PrintKind | null>(null);
+    const [isEditing, setIsEditing] = useState(false);
 
     const handleDownloadInvoice = async () => {
         if (!order?._id) return;
@@ -377,6 +398,7 @@ export default function OrderDetailsPage() {
     const sendPkg = sendPkgId ? packages.find((p) => p._id === sendPkgId) : undefined;
     // Order-level tracking typed in by hand before the Steadfast integration. Shown read-only
     // so older data is never hidden; tracking now comes from the Steadfast booking per package.
+    const editBlocked = editBlockedReason(order);
     const legacyTracking = [order.carrier, order.trackingNumber]
         .map((v: unknown) => (typeof v === 'string' ? v.trim() : ''))
         .filter(Boolean)
@@ -401,7 +423,16 @@ export default function OrderDetailsPage() {
                         </p>
                     </div>
                 </div>
-                <div className="flex gap-3 w-full md:w-auto">
+                <div className="flex flex-wrap gap-3 w-full md:w-auto">
+                    <button
+                        onClick={() => setIsEditing(true)}
+                        disabled={!!editBlocked}
+                        title={editBlocked || undefined}
+                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-md text-sm font-medium hover:bg-gray-50 transition-all text-gray-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <FiEdit3 size={16} />
+                        Edit order
+                    </button>
                     <button
                         onClick={handleDownloadInvoice}
                         disabled={isDownloadingInvoice}
@@ -885,6 +916,10 @@ export default function OrderDetailsPage() {
                 job={printKind ? { kind: printKind, ids: [order._id] } : null}
                 onClose={() => setPrintKind(null)}
             />
+
+            {isEditing && !editBlocked && (
+                <EditOrderModal order={order} onClose={() => setIsEditing(false)} />
+            )}
 
             {!isEditor && sendPkg && (
                 <SendToSteadfastModal

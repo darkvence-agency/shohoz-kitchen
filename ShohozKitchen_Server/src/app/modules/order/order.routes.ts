@@ -2,7 +2,7 @@ import express from 'express';
 import OrderController from './order.controller';
 import { authMiddleware, authorizeRoles } from '../../middlewares/auth';
 import validateRequest from '../../middlewares/validateRequest';
-import { createAdminOrderValidation, createOrderValidation, updateOrderStatusValidation } from './order.validation';
+import { createAdminOrderValidation, createOrderValidation, updateAdminOrderValidation, updateOrderStatusValidation } from './order.validation';
 import { OrderPrintController, orderPrintValidation } from './order.print';
 
 const router = express.Router();
@@ -22,15 +22,17 @@ router.patch('/:id/cancel', authMiddleware, OrderController.cancel);
 
 
 // ── Admin routes ─────────────────────────────────
-// Editors (order desk) may list, open, confirm / update status, add notes and print.
-// Creating orders, payments and courier tracking stay with admins. Only this route may
-// set line prices, the delivery charge and the starting status (createAdminOrderValidation).
+// Editors (order desk) may list, open, confirm / update status, add notes, print, and
+// correct an order that has not gone to the courier yet. Creating orders, payments and
+// courier tracking stay with admins. Only the create and edit routes may set line prices
+// and the delivery charge (createAdminOrderValidation / updateAdminOrderValidation).
 router.post('/admin', authMiddleware, authorizeRoles('admin'), validateRequest(createAdminOrderValidation), OrderController.createByAdmin);
 router.get('/admin/all', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getAll);
 router.get('/admin/stats', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getStats);
 // Shipping labels / invoices for up to 100 orders (rendered as HTML in the browser).
 router.post('/admin/print', authMiddleware, authorizeRoles('admin', 'editor'), validateRequest(orderPrintValidation), OrderPrintController.getPrintData);
 router.get('/admin/:id', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getById);
+router.patch('/admin/:id', authMiddleware, authorizeRoles('admin', 'editor'), validateRequest(updateAdminOrderValidation), OrderController.updateOrder);
 router.patch('/admin/:id/status', authMiddleware, authorizeRoles('admin', 'editor'), validateRequest(updateOrderStatusValidation), OrderController.updateStatus);
 router.patch('/admin/:id/payment', authMiddleware, authorizeRoles('admin'), OrderController.updatePaymentStatus);
 router.patch('/admin/:id/note', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.addNote);

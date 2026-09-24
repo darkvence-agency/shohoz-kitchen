@@ -39,6 +39,17 @@ export interface AdminOrderInput {
     note?: string;
 }
 
+/**
+ * Body of PATCH /api/orders/admin/:id — correcting an order that has not gone to the
+ * courier yet. Every part is optional: send only what changed, and the rest is left
+ * alone. `items`, when sent, replaces the order's lines in full.
+ *
+ * The order's status and payment status are not here — they keep their own controls.
+ */
+export type AdminOrderUpdate = Partial<Pick<AdminOrderInput,
+    'items' | 'shippingAddress' | 'paymentMethod' | 'paymentDetails' | 'deliveryArea' | 'zoneId' | 'shipping' | 'note'
+>>;
+
 export const orderApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         // ===== Admin endpoints =====
@@ -75,6 +86,16 @@ export const orderApi = baseApi.injectEndpoints({
                 body: data,
             }),
             invalidatesTags: ['Orders'],
+        }),
+        // Admin: correct an order's details — Backend route: PATCH /api/orders/admin/:id.
+        // Editing the lines moves stock, so Products is invalidated too.
+        updateAdminOrder: builder.mutation<{ data?: unknown }, { id: string } & AdminOrderUpdate>({
+            query: ({ id, ...data }) => ({
+                url: `/orders/admin/${id}`,
+                method: 'PATCH',
+                body: data,
+            }),
+            invalidatesTags: ['Orders', 'Products', 'Users'],
         }),
         // Admin: update payment status — Backend route: PATCH /api/orders/admin/:id/payment
         updatePaymentStatus: builder.mutation({
@@ -192,6 +213,7 @@ export const {
     useGetOrderStatsQuery,
     useGetAdminOrderByIdQuery,
     useUpdateOrderStatusMutation,
+    useUpdateAdminOrderMutation,
     useUpdatePaymentStatusMutation,
     useAddAdminNoteMutation,
     useCreateAdminOrderMutation,

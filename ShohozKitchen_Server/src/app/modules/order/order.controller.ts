@@ -62,6 +62,11 @@ const OrderController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Order status updated', data: order });
     }),
 
+    updateOrder: catchAsync(async (req: Request, res: Response) => {
+        const order = await OrderService.updateOrderDetails(req.params.id, req.body, req.user?.userId);
+        sendResponse(res, { statusCode: 200, success: true, message: 'Order updated', data: order });
+    }),
+
     updatePaymentStatus: catchAsync(async (req: Request, res: Response) => {
         const order = await OrderService.updatePaymentStatus(req.params.id, req.body.paymentStatus);
         sendResponse(res, { statusCode: 200, success: true, message: 'Payment status updated', data: order });
