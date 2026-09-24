@@ -24,6 +24,10 @@ export type PrintItem = {
     price: number;
     discount: number;
     total: number;
+    /** List ("was") unit price, when the line was sold below it. Older orders have none. */
+    originalPrice?: number;
+    /** Percent off originalPrice, as saved on the order line. */
+    discountPercent?: number;
 };
 
 /** One order as returned by POST /api/orders/admin/print. */
@@ -125,7 +129,7 @@ const day = (d?: string) => {
 };
 
 const METHOD: Record<string, string> = {
-    cod: 'Cash on delivery', bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket', sslcommerz: 'SSLCommerz',
+    cod: 'Cash on delivery', bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket', bank: 'Bank transfer', sslcommerz: 'SSLCommerz',
 };
 const methodLabel = (m: string) => METHOD[(m || '').toLowerCase()] || (m || '').toUpperCase();
 
@@ -145,6 +149,16 @@ function addressLine(a: PrintOrder['shippingAddress']): string {
 }
 
 const variantText = (it: PrintItem) => [it.color, it.size].filter(Boolean).join(' / ');
+
+/** Percent off the list price — the saved figure, else worked out; null when the line was not sold below it. */
+function listDiscount(it: PrintItem): number | null {
+    const original = Number(it.originalPrice) || 0;
+    const price = Number(it.price) || 0;
+    if (original <= price) return null;
+    const saved = Number(it.discountPercent);
+    const pct = saved > 0 ? saved : ((original - price) / original) * 100;
+    return Math.round(pct * 10) / 10;
+}
 
 const websiteText = (url: string) => url.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
 
@@ -359,6 +373,7 @@ table.items .num { text-align: right; white-space: nowrap; font-variant-numeric:
 table.items .qty { text-align: center; white-space: nowrap; }
 table.items .iname { font-weight: 600; }
 table.items .sub { font-size: 7.5pt; color: #666; margin-top: .4mm; }
+table.items .was { font-size: 7.5pt; color: #777; text-decoration: line-through; }
 .bottom { display: flex; gap: 5mm; margin-top: 5mm; align-items: flex-start; break-inside: avoid; page-break-inside: avoid; }
 .bottom .left { flex: 1 1 auto; display: flex; flex-direction: column; gap: 3mm; min-width: 0; }
 .bottom .left .v { margin-top: 1mm; white-space: pre-line; overflow-wrap: anywhere; }
@@ -399,11 +414,20 @@ function invoiceHtml(o: PrintOrder, store: PrintStore): string {
             it.color ? `Colour: ${it.color}` : '',
             it.size ? `Size: ${it.size}` : '',
         ].filter(Boolean).join(' · ');
+        const pct = listDiscount(it);
+        // Lines without a list price (every order before list prices were saved) print exactly as before.
+        const priceCell = pct === null
+            ? esc(taka(it.price))
+            : `<div class="was">${esc(taka(Number(it.originalPrice)))}</div>${esc(taka(it.price))}`;
+        const moneyOff = it.discount > 0 ? `− ${esc(taka(it.discount))}` : '';
+        const discCell = pct === null
+            ? (moneyOff || dash)
+            : `− ${esc(pct)}%${moneyOff ? `<div class="sub">${moneyOff}</div>` : ''}`;
         return `<tr>
             <td><div class="iname">${esc(it.name)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</td>
             <td class="qty">${esc(it.quantity)}</td>
-            <td class="num">${esc(taka(it.price))}</td>
-            <td class="num">${it.discount > 0 ? `− ${esc(taka(it.discount))}` : dash}</td>
+            <td class="num">${priceCell}</td>
+            <td class="num">${discCell}</td>
             <td class="num">${esc(taka(it.total))}</td>
         </tr>`;
     }).join('');

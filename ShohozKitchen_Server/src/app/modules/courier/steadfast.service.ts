@@ -25,7 +25,7 @@ const headers = () => ({
 });
 
 export interface CreateConsignmentInput {
-    invoice: string;          // unique per parcel (e.g. KM-0001-ab12)
+    invoice: string;          // unique per parcel: order ID + package id tail (e.g. SK-0050-ab12c; older orders KM-0001-ab12c)
     recipientName: string;
     recipientPhone: string;   // 11-digit BD number
     recipientAddress: string;
@@ -86,6 +86,21 @@ const SteadfastService = {
         const data: any = await res.json().catch(() => ({}));
         if (!res.ok) throw new AppError(502, `Steadfast (HTTP ${res.status}): ${data?.message || 'failed to fetch status.'}`);
         return data as { status: number; delivery_status: string };
+    },
+
+    // GET /status_by_invoice/{invoice} → { status, delivery_status }
+    // Only asked after an earlier send did not finish (e.g. it timed out), to learn
+    // whether Steadfast created the parcel anyway. Like the other status calls it
+    // returns no consignment id or tracking code, so a hit can only stop a second
+    // booking — it cannot adopt the first one. Anything but a clear status reads as
+    // "not there"; a network failure throws, so the caller can refuse to guess.
+    async findByInvoice(invoice: string): Promise<{ found: boolean; deliveryStatus: string }> {
+        ensureConfigured();
+        const res = await fetchWithTimeout(`${base_url}/status_by_invoice/${encodeURIComponent(invoice)}`, { headers: headers() });
+        const data: any = await res.json().catch(() => ({}));
+        const deliveryStatus = typeof data?.delivery_status === 'string' ? data.delivery_status.trim() : '';
+        const okStatus = data?.status === undefined || Number(data.status) === 200;
+        return { found: res.ok && okStatus && deliveryStatus !== '', deliveryStatus };
     },
 
     // GET /get_balance → { status, current_balance }

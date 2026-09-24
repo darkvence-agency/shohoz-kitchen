@@ -391,7 +391,8 @@ const CourierPayoutService = {
         }));
 
         // Match parcels to our orders by consignment id, falling back to the invoice
-        // we sent when booking ("KM-0001-ab12c" → order "KM-0001").
+        // we sent when booking ("SK-0050-ab12c" → order "SK-0050"; older "KM-0001-ab12c" → "KM-0001").
+        // The first two '-' parts are the order ID for either prefix and any length of number.
         const cids = parcels.map((p) => p.consignmentId).filter(Boolean);
         const orderNos = parcels.map((p) => p.invoice.split('-').slice(0, 2).join('-')).filter(Boolean);
         const orders: any[] = parcels.length

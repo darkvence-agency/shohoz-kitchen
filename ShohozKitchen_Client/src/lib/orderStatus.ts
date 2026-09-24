@@ -4,7 +4,6 @@ import {
     FiPackage,
     FiTruck,
     FiNavigation,
-    FiMapPin,
     FiAlertCircle,
     FiXCircle,
     FiRotateCcw,
@@ -174,12 +173,24 @@ export const paymentMethodBadge: Record<string, PaymentMethodBadge> = {
     bank: { bg: '#ecfdf5', color: '#0f766e' },
 };
 
-// ===== Carriers for tracking dropdowns =====
-export const CARRIERS: string[] = [
-    'Steadfast',
-    'Pathao',
-    'RedX',
-    'Sundarban',
-    'Paperfly',
-    'Other',
-];
+// ===== Steadfast courier status (the raw delivery_status Steadfast reports) =====
+
+/** "in_review" → "In review", "partial_delivered" → "Partial delivered". */
+export function courierStatusLabel(raw?: string): string {
+    const text = (raw || '').trim().replace(/[_-]+/g, ' ').toLowerCase();
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Not synced yet';
+}
+
+/**
+ * Badge classes for a Steadfast delivery_status: waiting on the courier → amber,
+ * delivered → green, cancelled / returned → red, anything still moving → blue,
+ * unknown / not synced → grey.
+ */
+export function courierStatusBadgeClass(raw?: string): string {
+    const v = (raw || '').trim().toLowerCase();
+    if (v === 'delivered' || v === 'partial_delivered') return 'bg-emerald-50 text-emerald-700';
+    if (v.startsWith('cancelled') || v.startsWith('returned')) return 'bg-red-50 text-red-700';
+    if (v === 'in_review' || v === 'pending' || v === 'hold') return 'bg-amber-50 text-amber-700';
+    if (!v || v === 'unknown') return 'bg-gray-100 text-gray-600';
+    return 'bg-blue-50 text-blue-700';
+}

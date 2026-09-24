@@ -51,8 +51,31 @@ async function bookPackageCore(order: any, packageId: string) {
     // read failure can never leave a Steadfast consignment we have no record of.
     const codChargeBps = await getCodChargeBps();
 
+    // The same invoice on every attempt, so Steadfast can be asked about it later.
+    const invoice = `${order.orderId}-${String(pkg._id).slice(-5)}`;
+
+    // An earlier send never got an answer. Steadfast may still have created the
+    // parcel, and sending again would book a second pickup — ask first.
+    if (pkg.courierAttemptAt) {
+        let existing: { found: boolean; deliveryStatus: string };
+        try {
+            existing = await SteadfastService.findByInvoice(invoice);
+        } catch {
+            throw new AppError(502, `An earlier send for invoice ${invoice} did not finish, and Steadfast could not be reached to check whether it went through. Try again in a moment.`);
+        }
+        if (existing.found) {
+            throw new AppError(409, `Steadfast already has a parcel for invoice ${invoice} (status: ${existing.deliveryStatus}) from an earlier send that did not finish here. Do not send again — take its tracking code from the Steadfast panel.`);
+        }
+    }
+
+    // Written straight to the database before the network call, because callers only
+    // save the order after this function returns — and a timeout would skip that.
+    const attemptAt = new Date();
+    await Order.updateOne({ _id: order._id, 'packages._id': pkg._id }, { $set: { 'packages.$.courierAttemptAt': attemptAt } });
+    pkg.courierAttemptAt = attemptAt;
+
     const consignment = await SteadfastService.createConsignment({
-        invoice: `${order.orderId}-${String(pkg._id).slice(-5)}`,
+        invoice,
         recipientName: a.fullName,
         recipientPhone: (a.phone || '').replace(/\D/g, '').slice(-11),
         recipientAddress: fullAddress,
@@ -60,6 +83,7 @@ async function bookPackageCore(order: any, packageId: string) {
         note: order.note || '',
     });
 
+    pkg.courierAttemptAt = undefined;   // answered: this send is settled
     pkg.consignmentId = String(consignment.consignment_id);
     pkg.trackingNumber = consignment.tracking_code || '';
     pkg.carrier = 'Steadfast';

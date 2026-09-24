@@ -19,8 +19,12 @@ import { recordStockMovements, variantOf } from './inventory.ledger';
 //  stock moves to a per-warehouse collection and these functions take a warehouse id.
 // ════════════════════════════════════════════════════════════════════════
 
-/** Thumbnail for quick-added drafts, served by the Next.js client from /public. */
-export const DRAFT_PLACEHOLDER_THUMBNAIL = '/images/placeholder-product.svg';
+/**
+ * Thumbnail for quick-added drafts, served by the Next.js client from /public.
+ * WebP rather than SVG: the storefront renders product images through next/image,
+ * which refuses to optimise SVG and answers 400.
+ */
+export const DRAFT_PLACEHOLDER_THUMBNAIL = '/images/placeholder-product.webp';
 
 const DEFAULT_LOW_STOCK = 5;
 const MAX_CAS_ATTEMPTS = 5;

@@ -52,6 +52,25 @@ export interface IBulkResult {
     results: { orderId: string; packageId: string; ok: boolean; trackingNumber?: string; courierStatus?: string; needsConfirmation?: boolean; error?: string }[];
 }
 
+/** A package as saved right after it was booked (POST …/book returns it). */
+export interface IBookedPackage {
+    _id: string;
+    status: string;
+    consignmentId: string;
+    trackingNumber: string;
+    courierStatus: string;
+    courierBookedAt?: string;
+    carrier?: string;
+}
+
+/** GET …/status — the courier's latest word on one package (refreshPackageCore on the API). */
+export interface ICourierRefreshResult {
+    courierStatus: string;
+    packageStatus: string;
+    needsConfirmation: boolean;
+    suggestedStatus: string | null;
+}
+
 type PkgRef = { orderId: string; packageId: string };
 
 // Steadfast (Packzy) courier — admin/superadmin book packages & sync status.
@@ -91,7 +110,7 @@ export const courierApi = baseApi.injectEndpoints({
         }),
 
         // POST /courier/orders/:orderId/packages/:packageId/book
-        bookCourierPackage: builder.mutation<any, PkgRef>({
+        bookCourierPackage: builder.mutation<{ data: IBookedPackage; message?: string }, PkgRef>({
             query: ({ orderId, packageId }) => ({
                 url: `/courier/orders/${orderId}/packages/${packageId}/book`,
                 method: 'POST',
@@ -100,7 +119,7 @@ export const courierApi = baseApi.injectEndpoints({
         }),
 
         // GET /courier/orders/:orderId/packages/:packageId/status — pull latest delivery status
-        refreshCourierStatus: builder.mutation<any, PkgRef>({
+        refreshCourierStatus: builder.mutation<{ data: ICourierRefreshResult; message?: string }, PkgRef>({
             query: ({ orderId, packageId }) => ({
                 url: `/courier/orders/${orderId}/packages/${packageId}/status`,
                 method: 'GET',
@@ -109,7 +128,7 @@ export const courierApi = baseApi.injectEndpoints({
         }),
 
         // GET /courier/balance — Steadfast account balance
-        getCourierBalance: builder.query<any, void>({
+        getCourierBalance: builder.query<{ data: { status?: number; current_balance: number } }, void>({
             query: () => '/courier/balance',
         }),
     }),
