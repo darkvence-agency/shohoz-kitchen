@@ -48,6 +48,13 @@ const ProductController = {
         sendResponse(res, { statusCode: 200, success: true, message: 'Brands fetched', data });
     }),
 
+    // ── Suggested short SKU for a product name (staff) ──────────────────
+    suggestSku: catchAsync(async (req: Request, res: Response) => {
+        const name = typeof req.query.name === 'string' ? req.query.name : '';
+        const sku = await ProductService.suggestSku(name);
+        sendResponse(res, { statusCode: 200, success: true, message: 'SKU suggested', data: { sku } });
+    }),
+
     getBySlug: catchAsync(async (req: Request, res: Response) => {
         const product = await ProductService.getProductBySlug(req.params.slug);
         sendResponse(res, { statusCode: 200, success: true, message: 'Product fetched', data: product });

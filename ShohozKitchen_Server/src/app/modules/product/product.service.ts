@@ -4,6 +4,7 @@ import AppError from '../../utils/AppError';
 import QueryBuilder from '../../utils/QueryBuilder';
 import { bulkUploadValidation } from './product.validation';
 import { logStockMovements } from '../inventory/inventory.ledger';
+import { buildProductSlug, generateSku, isSkuTaken, mergeLegacySlugs, parseManualSku } from './product.sku';
 
 // costPrice is the moving-average purchase cost kept by Inventory — staff-only data.
 // Public product responses never include it.
@@ -88,6 +89,45 @@ function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Fields the listing's ?searchTerm= is matched against. `sku` lets staff find a product
+// by its code: the word's plain substring regex already matches an exact SKU ("NF01"),
+// case-insensitively, and the fuzzy one also finds it typed unpadded ("nf1").
+const SEARCH_FIELDS = ['name', 'description', 'tags', 'colors', 'aiLabels', 'slug', 'sku'];
+
+// Auto-generated SKUs retried after losing a race for the same number.
+const SKU_RETRIES = 3;
+
+function isDuplicateKey(err: any, field: string): boolean {
+    return err?.code === 11000 && (err.keyPattern?.[field] !== undefined || err.keyValue?.[field] !== undefined);
+}
+
+/** A unique-index clash on sku / slug as a 409 the product form can show. */
+function duplicateToConflict(err: any): unknown {
+    if (isDuplicateKey(err, 'sku')) {
+        return new AppError(409, `SKU "${err.keyValue?.sku ?? ''}" is already taken. Leave the SKU empty to get the next free one.`);
+    }
+    if (isDuplicateKey(err, 'slug')) {
+        return new AppError(409, 'Another product already has this product link. Change the name or the SKU.');
+    }
+    return err;
+}
+
+/**
+ * Two products saved at the same moment can be handed the same next SKU; the unique
+ * index turns the second away (on sku, or on the slug built from it), so it is written
+ * again with a freshly generated one. A SKU the admin typed is never swapped.
+ */
+async function withSkuRetry<T>(autoSku: boolean, write: () => Promise<T>): Promise<T> {
+    for (let retry = 0; ; retry++) {
+        try {
+            return await write();
+        } catch (err) {
+            const lostRace = autoSku && (isDuplicateKey(err, 'sku') || isDuplicateKey(err, 'slug'));
+            if (!lostRace || retry >= SKU_RETRIES) throw duplicateToConflict(err);
+        }
+    }
+}
+
 const ProductService = {
     // ── Get all products (public, with full filtering) ──────────────────
     // `staff` (an admin token was sent — the admin Products page uses this same endpoint)
@@ -110,8 +150,7 @@ const ProductService = {
         // ── Extra server-side filters (brand / minRating / inStock) ──────────
         // Normalize empty / "all" so they never leak into Mongoose .find().
         // Each builds a Mongoose condition fragment that is AND-combined with the
-        // publicScope + the other filters, and is also re-injected into the
-        // search+category rebuild path below.
+        // publicScope + the other filters (the search included).
 
         // brand: case-insensitive exact match; comma-separated → match any (in-list).
         const rawBrand = typeof query.brand === 'string' ? query.brand.trim() : '';
@@ -219,7 +258,6 @@ const ProductService = {
         // NOTE: use $ne checks (not strict equals) so legacy/seeded products whose
         // visibility/approvalStatus fields are unset are still shown — only products
         // explicitly 'hidden' / 'pending' / 'rejected' are excluded.
-        // (Shared by both the normal path and the search+category rebuild path.)
         const publicScope: Record<string, unknown> = {
             isDeleted: false,
             approvalStatus: { $nin: ['pending', 'rejected'] },
@@ -236,60 +274,43 @@ const ProductService = {
             categoryIds = matchingCategories.map((c) => c._id.toString());
         }
 
-        // Build base query — if we found matching categories, include them
-        // Public listing: only approved + visible products are shown.
-        let baseFilter: any = { ...publicScope };
-        if (categoryIds.length > 0 && query.searchTerm) {
-            // Will be merged with search conditions via $and
-            baseFilter = {
-                ...publicScope,
-                $or: [
-                    { category: { $in: categoryIds } },
-                    { subCategory: { $in: categoryIds } },
-                    { childCategory: { $in: categoryIds } },
-                    // The QueryBuilder.search() will add field-level search conditions
-                    { _searchPlaceholder: true },
-                ],
-            };
+        // The search: every word must match one of SEARCH_FIELDS, or — when the term also
+        // names a category — the product sits in that category. Only those two are OR'd;
+        // publicScope and every filter from the query string (status, price, flags …) are
+        // AND'd around them, so e.g. ?status=active still holds for category matches.
+        let searchFilter: Record<string, unknown> | undefined;
+        if (query.searchTerm) {
+            // QueryBuilder.search() builds the word conditions; only its filter is used.
+            const textMatch = new QueryBuilder(Product.find(), { searchTerm: query.searchTerm })
+                .search(SEARCH_FIELDS)
+                .modelQuery.getFilter();
+            searchFilter = categoryIds.length > 0
+                ? {
+                    $or: [
+                        { category: { $in: categoryIds } },
+                        { subCategory: { $in: categoryIds } },
+                        { childCategory: { $in: categoryIds } },
+                        textMatch,
+                    ],
+                }
+                : textMatch;
         }
+        const baseFilter: Record<string, unknown> = searchFilter
+            ? { ...publicScope, $and: [...((publicScope.$and as Record<string, unknown>[]) || []), searchFilter] }
+            : publicScope;
 
+        // Public listing: only approved + visible products are shown.
         const productQuery = new QueryBuilder(
-            Product.find(categoryIds.length > 0 ? { ...publicScope } : baseFilter)
+            Product.find(baseFilter)
                 .populate('category', 'name slug')
                 .populate('subCategory', 'name slug')
                 .populate('childCategory', 'name slug'),
             query
         )
-            .search(['name', 'description', 'tags', 'colors', 'aiLabels', 'slug'])
             .filter()
             .sort()
             .paginate()
             .fields();
-
-        // If we have matching category IDs, merge them into the query
-        if (categoryIds.length > 0 && query.searchTerm) {
-            const currentFilter = productQuery.modelQuery.getFilter();
-            productQuery.modelQuery = Product.find({
-                ...publicScope,
-                $or: [
-                    { category: { $in: categoryIds } },
-                    { subCategory: { $in: categoryIds } },
-                    { childCategory: { $in: categoryIds } },
-                    ...(currentFilter.$and || [currentFilter]),
-                ],
-            })
-                .populate('category', 'name slug')
-                .populate('subCategory', 'name slug')
-                .populate('childCategory', 'name slug');
-
-            // Re-apply sort, paginate, fields
-            const sort = (query?.sort as string)?.split(',')?.join(' ') || '-createdAt';
-            const page = Number(query?.page) || 1;
-            const limit = Number(query?.limit) || 10;
-            const skip = (page - 1) * limit;
-            productQuery.modelQuery = productQuery.modelQuery.sort(sort).skip(skip).limit(limit);
-            if (!staff) productQuery.modelQuery = productQuery.modelQuery.select(`${HIDE_COST},${LIST_ONLY_EXCLUDE}`);
-        }
 
         const products = await productQuery.modelQuery;
         const meta = await productQuery.countTotal();
@@ -313,11 +334,15 @@ const ProductService = {
     // ── Get product by slug ─────────────────────────────────────────────
     async getProductBySlug(slug: string) {
         // Public: only approved products are reachable by slug.
-        const product = await Product.findOne({ slug, isDeleted: { $ne: true }, approvalStatus: { $nin: ['pending', 'rejected'] } })
-            .select(HIDE_COST)
-            .populate('category', 'name slug')
-            .populate('subCategory', 'name slug')
-            .populate('childCategory', 'name slug');
+        const findOne = (bySlug: Record<string, unknown>) =>
+            Product.findOne({ ...bySlug, isDeleted: { $ne: true }, approvalStatus: { $nin: ['pending', 'rejected'] } })
+                .select(HIDE_COST)
+                .populate('category', 'name slug')
+                .populate('subCategory', 'name slug')
+                .populate('childCategory', 'name slug');
+        // An old link (from before a rename or SKU change) still finds the product. The
+        // response carries its current `slug`, which the storefront redirects to.
+        const product = (await findOne({ slug })) || (await findOne({ legacySlugs: slug }));
         if (!product) throw new AppError(404, 'Product not found');
         await Product.findByIdAndUpdate(product._id, { $inc: { viewCount: 1 } });
         return product;
@@ -383,24 +408,20 @@ const ProductService = {
         return { total, active, draft, outOfStock };
     },
 
-    // ── Create product ──────────────────────────────────────────────────
-    // Guarantee a globally-unique slug (the slug index is unique). The product form
-    // pre-fills a name-derived slug with NO uniqueness suffix, so two same-named products
-    // would otherwise collide with a cryptic E11000 on create. Append -1, -2, … only on an
-    // actual collision, so unique names keep a clean, SEO-friendly slug.
-    async _uniqueSlug(desired: string, name: string): Promise<string> {
-        let base = String(desired || name || 'product')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)/g, '');
-        if (!base) base = 'product';
-        let slug = base;
-        let n = 1;
-        // eslint-disable-next-line no-await-in-loop
-        while (await Product.exists({ slug })) {
-            slug = `${base}-${n++}`;
+    // ── SKU ─────────────────────────────────────────────────────────────
+    // Staff: the SKU a product with this name would get now (the form pre-fills it).
+    async suggestSku(name: string): Promise<string> {
+        return generateSku(Product, name);
+    },
+
+    // A SKU typed on the form: tidied, well-formed (400) and not used by any other
+    // product in any letter case (409). '' → none typed.
+    async _claimSku(raw: unknown, excludeId?: string): Promise<string> {
+        const sku = parseManualSku(raw);
+        if (sku && (await isSkuTaken(Product, sku, excludeId))) {
+            throw new AppError(409, `SKU "${sku}" is already taken. Leave the SKU empty to get the next free one.`);
         }
-        return slug;
+        return sku;
     },
 
     async _resolveCategoryLineage(payload: any) {
@@ -454,10 +475,18 @@ const ProductService = {
     // opts.actorId → recorded as "by" on the opening stock movement.
     // opts.skipOpeningMovement → the caller (Inventory quick-add) writes its own.
     async createProduct(payload: any, opts: { actorId?: string; skipOpeningMovement?: boolean } = {}) {
-        payload.slug = await this._uniqueSlug(payload.slug, payload.name);
+        // The link is always name + SKU, built by the model's save hook — a slug sent with
+        // the form is not used. No SKU typed → the hook generates the next short one.
+        delete payload.slug;
+        delete payload.legacySlugs;
+        const sku = await this._claimSku(payload.sku);
+        if (sku) payload.sku = sku;
+        else delete payload.sku;
         await this._resolveCategoryLineage(payload);
         // Admin products are auto-approved and go live immediately.
-        const product = await Product.create({ ...payload, approvalStatus: 'approved', approvedAt: new Date() });
+        const product = await withSkuRetry(!sku, () =>
+            Product.create({ ...payload, approvalStatus: 'approved', approvedAt: new Date() })
+        );
 
         // Update category product count
         if (payload.category) await Category.findByIdAndUpdate(payload.category, { $inc: { productCount: 1 } });
@@ -490,11 +519,47 @@ const ProductService = {
     async updateProduct(id: string, payload: any, actorId?: string) {
         // Remove discount from payload — it's auto-calculated in pre-save
         delete payload.discount;
+        // The link is rebuilt below from the name and SKU — never taken from the request.
+        delete payload.slug;
+        delete payload.legacySlugs;
         const expectedStock = typeof payload.expectedStock === 'number' ? payload.expectedStock : undefined;
         delete payload.expectedStock;
         if (payload.category !== undefined || payload.subCategory !== undefined || payload.childCategory !== undefined) {
             await this._resolveCategoryLineage(payload);
         }
+
+        // ── SKU + link ── findOneAndUpdate skips the model's save hook, so its rules are
+        // applied here: a new name or SKU rebuilds the slug, and the old slug is kept.
+        let current: any = null;
+        let autoSku = false;
+        if (payload.name !== undefined || payload.sku !== undefined) {
+            current = await Product.findOne({ _id: id, isDeleted: false }).select('name sku slug legacySlugs').lean();
+            if (!current) throw new AppError(404, 'Product not found');
+            const sentSku = payload.sku === undefined ? undefined : String(payload.sku ?? '').trim();
+            delete payload.sku;
+            // An unchanged SKU is left alone, even one from before the short format.
+            if (sentSku !== undefined && sentSku.toUpperCase() !== String(current.sku || '').toUpperCase()) {
+                const sku = await this._claimSku(sentSku, id);
+                if (sku) payload.sku = sku;
+                else autoSku = true; // emptied on the form → generate one
+            }
+            if (!payload.sku && !current.sku) autoSku = true;
+        }
+        // Called per write, so a retry after losing a SKU race gets a fresh number.
+        const linkFields = async (): Promise<Record<string, unknown>> => {
+            if (!current) return {};
+            const name = payload.name !== undefined ? String(payload.name).trim() : current.name;
+            const out: Record<string, unknown> = {};
+            if (autoSku) out.sku = await generateSku(Product, name);
+            const sku = String(out.sku ?? payload.sku ?? current.sku);
+            if (name === current.name && sku === current.sku) return out;
+            const slug = buildProductSlug(name, sku);
+            if (slug !== current.slug) {
+                out.slug = slug;
+                out.legacySlugs = mergeLegacySlugs(current.legacySlugs, current.slug, slug);
+            }
+            return out;
+        };
 
         const eqOrMissing = (v: unknown) => (v === undefined || v === null ? { $in: [null, 0] } : v);
         let before: any = null;
@@ -523,10 +588,12 @@ const ProductService = {
                 if (guards.length) filter.$and = guards;
             }
 
-            product = await Product.findOneAndUpdate(filter, update, { new: true, runValidators: true })
-                .populate('category', 'name slug')
-                .populate('subCategory', 'name slug')
-                .populate('childCategory', 'name slug');
+            product = await withSkuRetry(autoSku, async () =>
+                Product.findOneAndUpdate(filter, { ...update, ...(await linkFields()) }, { new: true, runValidators: true })
+                    .populate('category', 'name slug')
+                    .populate('subCategory', 'name slug')
+                    .populate('childCategory', 'name slug')
+            );
             // No match = the stock moved between the read and the write — read again.
         }
         if (!product) throw new AppError(409, 'The stock changed while saving — please try again');
@@ -595,7 +662,8 @@ const ProductService = {
                 await this._resolveCategoryLineage(payload);
                 // Use create() (not insertMany) so pre-save hooks run per row
                 // (slug, sku, discount, variant labels) — same as single create.
-                const doc = await Product.create(payload);
+                // The row schema has no sku, so every row gets a generated one.
+                const doc = await withSkuRetry(true, () => Product.create(payload));
                 if (payload.category) await Category.findByIdAndUpdate(payload.category, { $inc: { productCount: 1 } });
                 if (payload.subCategory) await Category.findByIdAndUpdate(payload.subCategory, { $inc: { productCount: 1 } });
                 if (payload.childCategory) await Category.findByIdAndUpdate(payload.childCategory, { $inc: { productCount: 1 } });

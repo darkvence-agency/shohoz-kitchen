@@ -13,6 +13,8 @@ router.get('/featured', ProductController.getFeatured);
 // Live search + brand facets — MUST be before the generic '/:id' route.
 router.get('/suggest', ProductController.suggest);
 router.get('/brands', ProductController.getBrands);
+// Staff: next short SKU for a product name (the product form pre-fills it).
+router.get('/sku/suggest', authMiddleware, authorizeRoles('admin', 'editor'), ProductController.suggestSku);
 router.get('/slug/:slug', ProductController.getBySlug);
 router.patch('/:id/stat', ProductController.incrementStat);
 router.get('/:id/related/:categoryId', ProductController.getRelated);

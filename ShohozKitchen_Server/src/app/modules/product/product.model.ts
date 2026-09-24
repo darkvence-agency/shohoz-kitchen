@@ -1,4 +1,5 @@
-import { Schema, model } from 'mongoose';
+import { Schema, model, type Model } from 'mongoose';
+import { buildProductSlug, generateSku, mergeLegacySlugs, parseManualSku } from './product.sku';
 
 // ── Variant Schema ─────────────────────────────────────────
 // One variant = one combination of color + size with its own price/stock/images
@@ -24,8 +25,13 @@ const productSchema = new Schema(
     {
         // ── Basic Info ──────────────────────────────────────────
         name:        { type: String, required: [true, 'Product name is required'], trim: true, maxlength: 200 },
+        // Always name + SKU ("non-stick-fry-pan-26cm-nf01"), rebuilt when either changes.
         slug:        { type: String, unique: true, lowercase: true },
+        // Slugs the product had before, so old links still find it.
+        legacySlugs: { type: [String], default: [], index: true },
         sku:         { type: String, unique: true, sparse: true },
+        // Plain text under the name on the product page; `description` is the full rich text.
+        shortDescription: { type: String, maxlength: 300, trim: true, default: '' },
         description: { type: String, default: '' },
         tagline:     { type: String, maxlength: 200, default: 'Lower price than others but quality higher' },
         priceType:   { type: String, enum: ['fixed', 'negotiable'], default: 'negotiable' },
@@ -45,7 +51,7 @@ const productSchema = new Schema(
         // ── Images ──────────────────────────────────────────────
         // A product added in a hurry may have no photo yet; the storefront shows the
         // placeholder until one is uploaded.
-        thumbnail: { type: String, default: '/images/placeholder-product.svg' },
+        thumbnail: { type: String, default: '/images/placeholder-product.webp' },
         images:    [{ type: String }],
 
 
@@ -200,15 +206,20 @@ productSchema.virtual('soldCount').get(function () {
 });
 
 // ── Pre-save hooks ─────────────────────────────────────────
-productSchema.pre('save', function (next) {
-    // Auto slug
-    if (this.isModified('name') && !this.slug) {
-        this.slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now();
-    }
+// ProductService.updateProduct writes with findOneAndUpdate, which skips this hook,
+// so it applies the same SKU and slug rules itself.
+productSchema.pre('save', async function () {
+    // SKU: a typed one is tidied (uppercase) and must be well-formed; none → the next short one.
+    if (this.sku && (this.isNew || this.isModified('sku'))) this.sku = parseManualSku(this.sku);
+    if (!this.sku) this.sku = await generateSku(this.constructor as Model<any>, this.name);
 
-    // Auto SKU
-    if (!this.sku) {
-        this.sku = 'SKU-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+    // Slug: name + SKU. The slug it replaces is kept so old links still resolve.
+    if (this.isNew || this.isModified('name') || this.isModified('sku')) {
+        const slug = buildProductSlug(this.name, this.sku);
+        if (!this.isNew && this.slug && this.slug !== slug) {
+            this.set('legacySlugs', mergeLegacySlugs(this.legacySlugs, this.slug, slug));
+        }
+        this.slug = slug;
     }
 
     // Auto-calculate base product discount %
@@ -234,8 +245,6 @@ productSchema.pre('save', function (next) {
             }
         });
     }
-
-    next();
 });
 
 // ── Pre-find: Exclude deleted ──────────────────────────────

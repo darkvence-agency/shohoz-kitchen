@@ -9,10 +9,11 @@ const productCreateShape = z.object({
     // adding a product should not mean filling a long form first.
     name:          z.string({ required_error: 'Product name is required', invalid_type_error: 'Product name is required' }).min(1, 'Product name is required').max(200),
     description:   z.string().optional(),
+    shortDescription: z.string().max(300, 'Short description cannot exceed 300 characters').optional(),
     tagline:       z.string().max(200).optional(),
     priceType:     z.enum(['fixed', 'negotiable']).optional(),
     productType:   z.enum(['simple', 'variable', 'multi-color']).optional(),
-    slug:          z.string().optional(),
+    slug:          z.string().optional(), // accepted but not used — the link is always name + SKU
 
     // Pricing — discount is auto-calculated, no need to send it
     price:         z.number({ required_error: 'Price is required', invalid_type_error: 'Price must be a number' }).min(0, 'Price must be positive'),

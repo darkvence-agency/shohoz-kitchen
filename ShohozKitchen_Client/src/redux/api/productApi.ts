@@ -34,6 +34,15 @@ export const productApi = baseApi.injectEndpoints({
             query: () => '/products/featured',
             providesTags: ['Products'],
         }),
+        // Staff: next free short SKU for a product name — Backend route: GET /api/products/sku/suggest?name=
+        // Returns { sku: 'NF01' }. Used lazily: the product form asks only while a new name is typed,
+        // so it is not tagged — an invalidation must not re-fetch a suggestion nobody is looking at.
+        suggestSku: builder.query({
+            query: (name: string) => ({
+                url: '/products/sku/suggest',
+                params: { name },
+            }),
+        }),
         // Public: get product by slug — Backend route: GET /api/products/slug/:slug
         getProductBySlug: builder.query({
             query: (slug) => `/products/slug/${slug}`,
@@ -204,6 +213,7 @@ export const {
     useGetProductByIdQuery,
     useSuggestProductsQuery,
     useGetBrandsQuery,
+    useLazySuggestSkuQuery,
     useGetFeaturedProductsQuery,
     useGetProductBySlugQuery,
     useGetRelatedProductsQuery,

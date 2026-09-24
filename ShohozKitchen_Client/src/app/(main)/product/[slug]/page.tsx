@@ -51,7 +51,6 @@ export default function ProductDetailsPage() {
     const [selectedColor, setSelectedColor] = useState<string>('');
     const [selectedSize, setSelectedSize] = useState<string>('');
     const [detailsExpanded, setDetailsExpanded] = useState(false);
-    const [titleDescExpanded, setTitleDescExpanded] = useState(false);
     const [showRatingModal, setShowRatingModal] = useState(false);
     const [showSharePopup, setShowSharePopup] = useState(false);
     const [shareLinkCopied, setShareLinkCopied] = useState(false);
@@ -95,6 +94,17 @@ export default function ProductDetailsPage() {
     const { data: productData, isLoading, isError } = useGetProductBySlugQuery(slug as string, { skip: !slug });
     const product = productData?.data;
     const isWishlisted = product ? isInWishlist(product._id || product.id) : false;
+
+    // An old link (a renamed product's earlier slug) still resolves on the server, which
+    // answers with the current slug. The layout redirects a fresh page load; this catches
+    // a client-side navigation. Only when both are known and really differ — no loop.
+    useEffect(() => {
+        const requested = typeof slug === 'string' ? slug : '';
+        const canonical = typeof product?.slug === 'string' ? product.slug : '';
+        if (requested && canonical && requested !== canonical) {
+            router.replace(`/product/${canonical}`);
+        }
+    }, [slug, product?.slug, router]);
 
     const { data: relatedData } = useGetRelatedProductsQuery(
         { id: product?._id, categoryId: product?.category?._id },
@@ -549,54 +559,20 @@ export default function ProductDetailsPage() {
                             <h1 className="pd-title" style={{ fontSize: '18px', fontWeight: 700, color: '#111', margin: '0 0 8px', lineHeight: 1.4, wordBreak: 'break-word' }}>{product.name}</h1>
                             {product.tagline && <p style={{ fontSize: '13px', color: 'var(--color-primary)', fontWeight: 500, margin: '0 0 8px', wordBreak: 'break-word' }}>{product.tagline}</p>}
 
-                            {/* Product Description directly after title — formatted with rich text styles & collapsible */}
-                            {(activeVariant?.description || product.description) && (
-                                <div style={{ margin: '0 0 12px' }}>
-                                    <div
-                                        className="pd-title-description"
-                                        style={{
-                                            fontSize: '13px',
-                                            color: '#374151',
-                                            lineHeight: 1.6,
-                                            width: '100%',
-                                            maxWidth: '100%',
-                                            minWidth: 0,
-                                            wordBreak: 'break-word',
-                                            overflowWrap: 'break-word',
-                                            maxHeight: titleDescExpanded ? 'none' : '90px',
-                                            overflow: 'hidden',
-                                            position: 'relative',
-                                        }}
-                                        dangerouslySetInnerHTML={{ __html: activeVariant?.description || product.description }}
-                                    />
-                                    {!titleDescExpanded && ((activeVariant?.description || product.description).length > 140 || ((activeVariant?.description || product.description).match(/<\/p>/g) || []).length > 2) && (
-                                        <div style={{ height: '24px', marginTop: '-24px', background: 'linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.95))', position: 'relative', pointerEvents: 'none' }} />
-                                    )}
-                                    {((activeVariant?.description || product.description).length > 140 || ((activeVariant?.description || product.description).match(/<\/p>/g) || []).length > 2) && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setTitleDescExpanded(prev => !prev)}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
-                                                padding: '4px 0 0',
-                                                fontSize: '12px',
-                                                fontWeight: 700,
-                                                color: 'var(--color-primary)',
-                                                cursor: 'pointer',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '4px',
-                                            }}
-                                        >
-                                            {titleDescExpanded ? (
-                                                <>Show less <FiChevronUp size={13} /></>
-                                            ) : (
-                                                <>See more <FiChevronDown size={13} /></>
-                                            )}
-                                        </button>
-                                    )}
-                                </div>
+                            {/* Short description directly after the title — plain text, never HTML.
+                                The full rich text lives in the Product details section below. */}
+                            {product.shortDescription && (
+                                <p style={{
+                                    fontSize: '13px',
+                                    color: '#374151',
+                                    lineHeight: 1.6,
+                                    margin: '0 0 12px',
+                                    whiteSpace: 'pre-line',
+                                    wordBreak: 'break-word',
+                                    overflowWrap: 'break-word',
+                                }}>
+                                    {product.shortDescription}
+                                </p>
                             )}
 
                             {/* Rating row */}
@@ -835,9 +811,10 @@ export default function ProductDetailsPage() {
                                     </div>
                                 )}
 
-                                {/* ── Description ── */}
-                                {product.description ? (
-                                    <div style={{ fontSize: '14px', color: '#444', lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: product.description }} />
+                                {/* ── Description ── the only place the full rich text is shown;
+                                     a selected variant's own description takes over here. */}
+                                {(activeVariant?.description || product.description) ? (
+                                    <div style={{ fontSize: '14px', color: '#444', lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: activeVariant?.description || product.description }} />
                                 ) : (
                                     !hasSpecsSection && <p style={{ fontSize: '13px', color: '#aaa', textAlign: 'center', padding: '20px 0' }}>No description available.</p>
                                 )}
@@ -847,7 +824,7 @@ export default function ProductDetailsPage() {
                                     <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '90px', background: 'linear-gradient(to bottom, rgba(255,255,255,0), #fff)', pointerEvents: 'none' }} />
                                 )}
                             </div>
-                            {(hasSpecsSection || product.description) && (
+                            {(hasSpecsSection || activeVariant?.description || product.description) && (
                                 <div style={{ textAlign: 'center', marginTop: '12px' }}>
                                     <button onClick={() => setDetailsExpanded(v => !v)}
                                         style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#fff', border: '1px solid var(--color-primary)', color: 'var(--color-primary)', fontWeight: 700, fontSize: '13px', cursor: 'pointer', borderRadius: '4px', padding: '8px 28px' }}>
@@ -1097,87 +1074,6 @@ export default function ProductDetailsPage() {
                 .pd-thumb-strip::-webkit-scrollbar { display: none; }
                 .pd-thumb-strip { -ms-overflow-style: none; scrollbar-width: none; }
                 .pd-breadcrumb::-webkit-scrollbar { display: none; }
-
-                /* Rich Description Styling — matches Quill input field */
-                .pd-title-description {
-                    width: 100%;
-                    max-width: 100%;
-                    min-width: 0;
-                    overflow-wrap: break-word;
-                    word-break: break-word;
-                }
-                .pd-title-description * {
-                    max-width: 100%;
-                    word-break: break-word;
-                    overflow-wrap: break-word;
-                    box-sizing: border-box;
-                }
-                .pd-title-description p {
-                    margin: 0 0 6px 0;
-                    line-height: 1.6;
-                    display: block;
-                }
-                .pd-title-description p:last-child {
-                    margin-bottom: 0;
-                }
-                .pd-title-description strong, .pd-title-description b {
-                    font-weight: 700;
-                    color: #111827;
-                }
-                .pd-title-description em, .pd-title-description i {
-                    font-style: italic;
-                }
-                .pd-title-description u {
-                    text-decoration: underline;
-                }
-                .pd-title-description s, .pd-title-description strike {
-                    text-decoration: line-through;
-                }
-                .pd-title-description ul {
-                    list-style-type: disc;
-                    padding-left: 20px;
-                    margin: 6px 0;
-                }
-                .pd-title-description ol {
-                    list-style-type: decimal;
-                    padding-left: 20px;
-                    margin: 6px 0;
-                }
-                .pd-title-description li {
-                    margin-bottom: 3px;
-                }
-                .pd-title-description a {
-                    color: var(--color-primary);
-                    text-decoration: underline;
-                }
-                .pd-title-description blockquote {
-                    border-left: 3px solid #e5e7eb;
-                    padding-left: 12px;
-                    margin: 8px 0;
-                    color: #6b7280;
-                    font-style: italic;
-                }
-                .pd-title-description img {
-                    max-width: 100%;
-                    height: auto;
-                    border-radius: 4px;
-                }
-                .pd-title-description table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 8px 0;
-                }
-                .pd-title-description td, .pd-title-description th {
-                    border: 1px solid #e5e7eb;
-                    padding: 6px 8px;
-                    font-size: 12px;
-                }
-                .pd-title-description .ql-align-center { text-align: center; }
-                .pd-title-description .ql-align-right { text-align: right; }
-                .pd-title-description .ql-align-justify { text-align: justify; }
-                .pd-title-description .ql-size-small { font-size: 11px; }
-                .pd-title-description .ql-size-large { font-size: 16px; }
-                .pd-title-description .ql-size-huge { font-size: 20px; }
 
                 /* Tablet: gallery on top, info + delivery side-by-side */
                 @media (max-width: 1023px) {

@@ -21,7 +21,8 @@ import {
 import {
     useCreateProductMutation,
     useUpdateProductMutation,
-    useGetProductByIdQuery
+    useGetProductByIdQuery,
+    useLazySuggestSkuQuery
 } from '@/redux/api/productApi';
 import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
 import UnitSelect from '@/components/dashboard/UnitSelect';
@@ -83,7 +84,7 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
     const [formData, setFormData] = useState<any>({
         // Basic
         name: '', slug: '', sku: '', brand: '', model: '',
-        description: '', tagline: '',
+        description: '', shortDescription: '', tagline: '',
         productType: 'simple',
         // Pricing — numeric fields start EMPTY ('') so inputs aren't stuck at 0
         price: '', originalPrice: '', discount: 0,
@@ -158,6 +159,7 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                 ...prev,
                 ...prod,
                 description: prod.description || '',
+                shortDescription: prod.shortDescription || '',
                 category: prod.category?._id || prod.category || '',
                 subCategory: prod.subCategory?._id || prod.subCategory || '',
                 childCategory: prod.childCategory?._id || prod.childCategory || '',
@@ -218,6 +220,31 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
             setFormData((prev: any) => ({ ...prev, slug }));
         }
     }, [formData.name, isEditing]);
+
+    // ── Suggested SKU ──
+    const [fetchSkuSuggestion] = useLazySuggestSkuQuery();
+    // Set once the admin types in the SKU box: their SKU wins for the rest of the session.
+    const skuEditedByHand = useRef(false);
+
+    // New product only: ask the server for the SKU this name would get, once typing pauses.
+    // Never on the edit form — an existing SKU is part of the product's link.
+    useEffect(() => {
+        if (isEditing || skuEditedByHand.current) return;
+        const name = String(formData.name || '').trim();
+        if (!name) return;
+        const timer = setTimeout(async () => {
+            try {
+                const res = await fetchSkuSuggestion(name).unwrap();
+                const sku = res?.data?.sku;
+                // The admin may have typed one while the request was in flight.
+                if (sku && !skuEditedByHand.current) setFormData((prev: any) => ({ ...prev, sku }));
+            } catch {
+                // No suggestion (offline, or the session expired) — leaving the SKU empty
+                // is fine, the server generates one on save.
+            }
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [formData.name, isEditing, fetchSkuSuggestion]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -627,7 +654,11 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <Input label="Slug" name="slug" type="text" placeholder="auto-generated" value={formData.slug} onChange={handleChange} />
-                            <Input label="SKU" name="sku" type="text" placeholder="e.g. IND-1001" value={formData.sku} onChange={handleChange} />
+                            <div className="space-y-1.5">
+                                <Input label="SKU" name="sku" type="text" placeholder="Auto — e.g. NF01" value={formData.sku}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => { skuEditedByHand.current = true; handleChange(e); }} />
+                                <p className="text-xs text-gray-400">Appears in the product link</p>
+                            </div>
                             <Input label="Brand" name="brand" type="text" placeholder="e.g. Lishan Group" value={formData.brand} onChange={handleChange} error={errors.brand} />
                         </div>
 
@@ -657,8 +688,22 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                             <input type="text" name="tagline" placeholder="Lower price than others but quality higher" className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-md outline-none focus:border-[var(--color-primary)] transition-all text-sm" value={formData.tagline} onChange={handleChange} />
                         </div>
 
+                        {/* Plain text under the product name on the storefront — the rich text below
+                            is the long copy in the Product details section. */}
+                        <div className="space-y-1.5" data-field="shortDescription">
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-semibold text-gray-700">Short description</label>
+                                <span className="text-xs text-gray-400">{(formData.shortDescription || '').length}/300</span>
+                            </div>
+                            <textarea name="shortDescription" rows={2} maxLength={300} placeholder="One or two lines shown under the product name"
+                                className={`w-full px-4 py-3 bg-white border rounded-md outline-none transition-all text-sm ${errors.shortDescription ? 'border-red-400 bg-red-50/30 focus:border-red-500' : 'border-gray-200 focus:border-[var(--color-primary)]'}`}
+                                value={formData.shortDescription}
+                                onChange={(e) => { clearError('shortDescription'); setFormData((prev: any) => ({ ...prev, shortDescription: e.target.value.slice(0, 300) })); }}></textarea>
+                            {errors.shortDescription && <p className="text-xs text-red-500 font-medium">⚠ {errors.shortDescription}</p>}
+                        </div>
+
                         <div className="space-y-1.5" data-field="description">
-                            <label className="text-sm font-semibold text-gray-700">Product Description</label>
+                            <label className="text-sm font-semibold text-gray-700">Full description</label>
                             <div className={`product-editor-wrapper ${errors.description ? 'ring-1 ring-red-400 rounded-md' : ''}`}>
                                 {isEditing && !isDataLoaded ? (
                                     <div className="h-[300px] bg-gray-50 border border-gray-200 rounded-md animate-pulse flex flex-col items-center justify-center text-gray-400 text-sm gap-2">

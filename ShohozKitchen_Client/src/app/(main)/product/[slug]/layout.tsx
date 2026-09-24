@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { permanentRedirect } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -31,6 +32,11 @@ export async function generateMetadata({
         };
     }
 
+    // The API also answers on a product's old slugs (legacySlugs), always with its current
+    // one. Move the browser onto that — a product should have a single, indexable link.
+    const canonicalSlug: string = typeof product.slug === 'string' && product.slug ? product.slug : slug;
+    if (canonicalSlug !== slug) permanentRedirect(`/product/${canonicalSlug}`);
+
     const name: string = product.name || 'Product';
     const rawDesc: string = product.description || '';
     // Strip any HTML and trim to a sensible meta-description length.
@@ -42,12 +48,12 @@ export async function generateMetadata({
     return {
         title: name,
         description,
-        alternates: { canonical: `/product/${slug}` },
+        alternates: { canonical: `/product/${canonicalSlug}` },
         openGraph: {
             type: 'website',
             title: name,
             description,
-            url: `/product/${slug}`,
+            url: `/product/${canonicalSlug}`,
             images: image ? [{ url: image, alt: name }] : undefined,
         },
         twitter: {
