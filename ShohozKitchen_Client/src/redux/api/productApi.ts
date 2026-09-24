@@ -44,8 +44,10 @@ export const productApi = baseApi.injectEndpoints({
             }),
         }),
         // Public: get product by slug — Backend route: GET /api/products/slug/:slug
+        // The slug is passed as plain text — a product named in Bengali has Bengali letters
+        // in its slug, and those have to be percent-encoded to survive the URL.
         getProductBySlug: builder.query({
-            query: (slug) => `/products/slug/${slug}`,
+            query: (slug: string) => `/products/slug/${encodeURIComponent(slug)}`,
             providesTags: ['Products'],
         }),
         // Public: get related products — Backend route: GET /api/products/:id/related/:categoryId

@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { PRODUCT_IMAGE_FALLBACK } from '@/components/shared/NewProductCard';
 import { useParams, useRouter } from 'next/navigation';
+import { decodeSlug, productPath } from '@/lib/productUrl';
 import {
     FiHeart, FiShoppingCart, FiMinus, FiPlus, FiCheckCircle,
     FiStar, FiX, FiZoomIn, FiCopy, FiShare2, FiDownload,
@@ -34,7 +35,9 @@ import {
 import { FaXTwitter, FaTiktok } from 'react-icons/fa6';
 
 export default function ProductDetailsPage() {
-    const { slug } = useParams();
+    // A route param is the raw path segment, so a slug with Bengali letters arrives
+    // percent-encoded; everything below wants it as plain text.
+    const slug = decodeSlug(useParams().slug);
     const router = useRouter();
     const dispatch = useAppDispatch();
     const { isAuthenticated } = useAppSelector((state: any) => state.auth);
@@ -91,18 +94,19 @@ export default function ProductDetailsPage() {
         if (ref.current) ref.current.scrollBy({ left: dir === 'down' ? 140 : -140, behavior: 'smooth' });
     };
 
-    const { data: productData, isLoading, isError } = useGetProductBySlugQuery(slug as string, { skip: !slug });
+    const { data: productData, isLoading, isError } = useGetProductBySlugQuery(slug, { skip: !slug });
     const product = productData?.data;
     const isWishlisted = product ? isInWishlist(product._id || product.id) : false;
 
     // An old link (a renamed product's earlier slug) still resolves on the server, which
     // answers with the current slug. The layout redirects a fresh page load; this catches
-    // a client-side navigation. Only when both are known and really differ — no loop.
+    // a client-side navigation. Both sides are plain text, so a slug only "differs" when it
+    // really is a different slug — comparing the encoded URL form against the plain one
+    // made every Bengali slug differ from itself, and the page redirected to itself for ever.
     useEffect(() => {
-        const requested = typeof slug === 'string' ? slug : '';
         const canonical = typeof product?.slug === 'string' ? product.slug : '';
-        if (requested && canonical && requested !== canonical) {
-            router.replace(`/product/${canonical}`);
+        if (slug && canonical && slug !== canonical) {
+            router.replace(productPath(canonical));
         }
     }, [slug, product?.slug, router]);
 
