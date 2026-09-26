@@ -254,7 +254,7 @@ const CartPage = () => {
     const dispatch = useAppDispatch();
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [couponCode, setCouponCode] = useState('');
-    const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; finalAmount: number; message: string; freeShipping?: boolean } | null>(null);
+    const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; message: string; freeShipping?: boolean } | null>(null);
     const [couponError, setCouponError] = useState('');
     const [validateCoupon, { isLoading: isValidating }] = useValidateCouponMutation();
 
@@ -346,7 +346,6 @@ const CartPage = () => {
             const couponData = {
                 code,
                 discount: result.data?.discount ?? result.discount ?? 0,
-                finalAmount: result.data?.finalAmount ?? result.finalAmount ?? selectedSubtotal,
                 message: result.data?.message ?? result.message ?? 'Coupon applied!',
                 freeShipping: Boolean(result.data?.freeShipping ?? result.freeShipping),
             };
@@ -385,8 +384,9 @@ const CartPage = () => {
     const freeThreshold = shipSettings?.freeShippingByThresholdEnabled ? (shipSettings?.freeShippingThreshold || 0) : 0;
     const remainingForFree = freeThreshold > 0 && !freeShipping ? Math.max(0, freeThreshold - selectedSubtotal) : 0;
 
-    // Total = (coupon ? finalAmount : selected subtotal) + estimated shipping
-    const baseAmount = appliedCoupon ? appliedCoupon.finalAmount : selectedSubtotal;
+    // Total = selected subtotal − the coupon's discount + estimated shipping. Worked out
+    // from the discount itself, the way the server does it (order.service.ts).
+    const baseAmount = appliedCoupon ? Math.max(0, selectedSubtotal - appliedCoupon.discount) : selectedSubtotal;
     const finalTotal = baseAmount + shippingCost;
 
     const handleClearCart = () => {

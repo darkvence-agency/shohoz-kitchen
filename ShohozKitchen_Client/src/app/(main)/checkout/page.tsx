@@ -121,7 +121,7 @@ const CheckoutPage = () => {
     });
     const [copied, setCopied] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; finalAmount: number; freeShipping?: boolean } | null>(null);
+    const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number; freeShipping?: boolean } | null>(null);
     // Set once an order is successfully placed → drives the success modal.
     const [placedOrder, setPlacedOrder] = useState<{ _id?: string; orderId?: string } | null>(null);
 
@@ -482,8 +482,9 @@ const CheckoutPage = () => {
 
     const isSubmitting = isPlacingOrder || isGuestPlacing || isInitiatingPayment;
 
-    // Total = (coupon ? finalAmount : subtotal) + shippingCost
-    const baseAmount = appliedCoupon ? appliedCoupon.finalAmount : totalPrice;
+    // Total = subtotal − the coupon's discount + shippingCost, worked out from the
+    // discount itself, the way the server does it (order.service.ts).
+    const baseAmount = appliedCoupon ? Math.max(0, totalPrice - appliedCoupon.discount) : totalPrice;
     const orderTotal = baseAmount + shippingCost;
     const totalQuantity = items.reduce((a, i) => a + i.quantity, 0);
 
