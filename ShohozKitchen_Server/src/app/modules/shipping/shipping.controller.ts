@@ -1,21 +1,41 @@
 import { Request, Response } from 'express';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
+import mongoose from 'mongoose';
 import { ShippingZone, ShippingRate } from './shipping.model';
 import { Order } from '../order/order.model';
+import { Product } from '../product/product.model';
 import QueryBuilder from '../../utils/QueryBuilder';
 import AppError from '../../utils/AppError';
 import { computeShippingCost, getSettings, updateSettings, isDeliveryArea } from './shipping.service';
 
 const ShippingController = {
     // ═══════════════════ PUBLIC QUOTE ═══════════════════
-    // GET /shipping/quote?city=...&subtotal=...&zoneId=...&area=inside_dhaka|outside_dhaka  (no auth)
+    // GET /shipping/quote?city=...&subtotal=...&zoneId=...&area=inside_dhaka|outside_dhaka
+    //                    &productIds=id,id,...   (no auth)
+    // productIds are the cart's products — their own delivery charges decide the quote.
     getQuote: catchAsync(async (req: Request, res: Response) => {
         const city = typeof req.query.city === 'string' ? req.query.city : '';
         const subtotal = Number(req.query.subtotal) || 0;
         const zoneId = typeof req.query.zoneId === 'string' && req.query.zoneId ? req.query.zoneId : undefined;
         const area = isDeliveryArea(req.query.area) ? req.query.area : undefined;
-        const quote = await computeShippingCost({ city, subtotal, zoneId, area });
+
+        const ids = (typeof req.query.productIds === 'string' ? req.query.productIds.split(',') : [])
+            .map((id) => id.trim())
+            .filter((id) => mongoose.isValidObjectId(id))
+            .slice(0, 100);
+        const products = ids.length
+            ? await Product.find({ _id: { $in: ids } }).select('shippingConfig').lean()
+            : [];
+        const items = products.length
+            ? products.map((p: any) => ({
+                freeShipping: Boolean(p.shippingConfig?.freeShipping),
+                insideDhakaCost: Number(p.shippingConfig?.insideDhakaCost) || 0,
+                outsideDhakaCost: Number(p.shippingConfig?.outsideDhakaCost) || 0,
+            }))
+            : undefined;
+
+        const quote = await computeShippingCost({ city, subtotal, zoneId, area, items });
         sendResponse(res, { statusCode: 200, success: true, message: 'Shipping quote', data: quote });
     }),
 

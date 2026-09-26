@@ -25,6 +25,7 @@ import {
     useLazySuggestSkuQuery
 } from '@/redux/api/productApi';
 import { useGetCategoriesQuery } from '@/redux/api/categoryApi';
+import { useGetShippingSettingsQuery } from '@/redux/api/shippingApi';
 import UnitSelect from '@/components/dashboard/UnitSelect';
 import { toast } from 'react-hot-toast';
 
@@ -72,6 +73,10 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
         refetchOnMountOrArgChange: true,
     });
     const { data: categoriesData } = useGetCategoriesQuery({});
+    // The site-wide delivery charges — what a product with no charge of its own costs.
+    const { data: shipSettings } = useGetShippingSettingsQuery();
+    const defaultInsideRate = shipSettings?.defaultInsideDhakaRate ?? 60;
+    const defaultOutsideRate = shipSettings?.defaultOutsideDhakaRate ?? 120;
 
     const [isDataLoaded, setIsDataLoaded] = useState(!isEditing);
 
@@ -114,8 +119,8 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
         // Physical
         weight: '',
         dimensions: { length: '', width: '', height: '' },
-        // Shipping & Warranty
-        shippingConfig: { freeShipping: false, shippingCost: 0, estimatedDays: 3 },
+        // Shipping & Warranty — delivery charges left blank fall back to Settings → Business
+        shippingConfig: { freeShipping: false, insideDhakaCost: '', outsideDhakaCost: '', estimatedDays: 3 },
         warranty: { hasWarranty: false, duration: 0, durationUnit: 'months', type: 'manufacturer' },
         // SEO
         metaTitle: '', metaDescription: '', metaKeywords: [],
@@ -176,7 +181,14 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                 offerEndDate: toDateInput(prod.offerEndDate),
                 insideTheBox: prod.insideTheBox || '',
                 warranty: prod.warranty || prev.warranty,
-                shippingConfig: prod.shippingConfig || prev.shippingConfig,
+                // A charge of 0 means "not set", so the box shows empty and the
+                // Settings rate applies.
+                shippingConfig: {
+                    freeShipping: Boolean(prod.shippingConfig?.freeShipping),
+                    insideDhakaCost: prod.shippingConfig?.insideDhakaCost || '',
+                    outsideDhakaCost: prod.shippingConfig?.outsideDhakaCost || '',
+                    estimatedDays: prod.shippingConfig?.estimatedDays ?? 3,
+                },
                 dimensions: prod.dimensions
                     ? {
                         length: prod.dimensions.length ?? '',
@@ -432,7 +444,9 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
 
             payload.shippingConfig = {
                 freeShipping: Boolean(formData.shippingConfig?.freeShipping),
-                shippingCost: toOptionalNum(formData.shippingConfig?.shippingCost) ?? 0,
+                // 0 = no charge of its own → the Settings → Business rate applies.
+                insideDhakaCost: toOptionalNum(formData.shippingConfig?.insideDhakaCost) ?? 0,
+                outsideDhakaCost: toOptionalNum(formData.shippingConfig?.outsideDhakaCost) ?? 0,
                 estimatedDays: toOptionalNum(formData.shippingConfig?.estimatedDays) ?? 3,
             };
 
@@ -1209,16 +1223,27 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                                 <span className="text-sm font-bold text-gray-700">Free Shipping</span>
                             </label>
                             {!formData.shippingConfig.freeShipping && (
-                                <div className="grid grid-cols-2 gap-3 pt-1">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400">Shipping Cost (৳)</label>
-                                        <input type="number" name="shippingConfig.shippingCost" placeholder="0" className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.shippingCost} onChange={handleChange} />
+                                <>
+                                    <div className="grid grid-cols-3 gap-3 pt-1">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400">Inside Dhaka (৳)</label>
+                                            <input type="number" name="shippingConfig.insideDhakaCost" placeholder={String(defaultInsideRate)} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.insideDhakaCost} onChange={handleChange} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400">Outside Dhaka (৳)</label>
+                                            <input type="number" name="shippingConfig.outsideDhakaCost" placeholder={String(defaultOutsideRate)} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.outsideDhakaCost} onChange={handleChange} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400">Est. Days</label>
+                                            <input type="number" name="shippingConfig.estimatedDays" placeholder="3" className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.estimatedDays} onChange={handleChange} />
+                                        </div>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400">Est. Days</label>
-                                        <input type="number" name="shippingConfig.estimatedDays" placeholder="3" className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.estimatedDays} onChange={handleChange} />
-                                    </div>
-                                </div>
+                                    <p className="text-[11px] text-gray-500">
+                                        This product&apos;s delivery charge. Leave a box empty to use the default
+                                        (Inside ৳{defaultInsideRate} · Outside ৳{defaultOutsideRate}) from Settings → Business.
+                                        In a mixed cart the dearest product&apos;s charge applies to the whole order.
+                                    </p>
+                                </>
                             )}
                         </div>
 

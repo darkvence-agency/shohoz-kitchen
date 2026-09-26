@@ -63,9 +63,11 @@ const productCreateShape = z.object({
         type:         z.enum(['manufacturer', 'seller', 'none']).optional(),
     }).optional(),
     shippingConfig: z.object({
-        freeShipping:  z.boolean().optional(),
-        shippingCost:  z.coerce.number().min(0).optional(),
-        estimatedDays: z.coerce.number().min(0).optional(),
+        freeShipping:     z.boolean().optional(),
+        // 0 / omitted → the Inside / Outside Dhaka rate from Settings applies.
+        insideDhakaCost:  z.coerce.number().min(0).optional(),
+        outsideDhakaCost: z.coerce.number().min(0).optional(),
+        estimatedDays:    z.coerce.number().min(0).optional(),
     }).optional(),
 
     // Status

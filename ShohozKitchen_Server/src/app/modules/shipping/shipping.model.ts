@@ -48,8 +48,8 @@ export const DEFAULT_COD_CHARGE_BPS = 100;
 export const MAX_COD_CHARGE_BPS = 10000; // 100%
 
 /** Flat delivery charges (BDT) until the admin changes them in Settings → Business. */
-export const DEFAULT_INSIDE_DHAKA_RATE = 70;
-export const DEFAULT_OUTSIDE_DHAKA_RATE = 130;
+export const DEFAULT_INSIDE_DHAKA_RATE = 60;
+export const DEFAULT_OUTSIDE_DHAKA_RATE = 120;
 
 export interface IShippingSettings extends Document {
     _key: string;

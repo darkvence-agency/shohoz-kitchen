@@ -1,21 +1,25 @@
 import { baseApi } from "./baseApi";
 
+/** Inside / Outside Dhaka, picked at checkout. */
+export type DeliveryArea = 'inside_dhaka' | 'outside_dhaka';
+
 // Shape returned by the public quote endpoint (after unwrapping the response envelope)
 export interface ShippingQuote {
     shippingCost: number;
     estimatedDays: string;
     freeShipping: boolean;
     freeReason: 'product' | 'coupon' | 'threshold' | 'quantity' | null;
+    /** What this cart costs in each area — shown before the customer picks one. */
+    areaRates: Record<DeliveryArea, number>;
 }
-
-/** Inside / Outside Dhaka, picked at checkout → the flat charge from Settings. */
-export type DeliveryArea = 'inside_dhaka' | 'outside_dhaka';
 
 interface ShippingQuoteArgs {
     city?: string;
     subtotal?: number;
     zoneId?: string;
     area?: DeliveryArea;
+    /** The cart's products, so their own delivery charges decide the quote. */
+    productIds?: string[];
 }
 
 // One option in the checkout "Delivery Area" dropdown.
@@ -49,7 +53,7 @@ export const shippingApi = baseApi.injectEndpoints({
     endpoints: (builder) => ({
         // Public: get a shipping quote — Backend route: GET /api/shipping/quote
         getShippingQuote: builder.query<ShippingQuote, ShippingQuoteArgs>({
-            query: ({ city, subtotal, zoneId, area } = {}) => ({
+            query: ({ city, subtotal, zoneId, area, productIds } = {}) => ({
                 url: '/shipping/quote',
                 method: 'GET',
                 params: {
@@ -57,16 +61,22 @@ export const shippingApi = baseApi.injectEndpoints({
                     ...(subtotal != null ? { subtotal } : {}),
                     ...(zoneId ? { zoneId } : {}),
                     ...(area ? { area } : {}),
+                    ...(productIds?.length ? { productIds: productIds.join(',') } : {}),
                 },
             }),
             // Unwrap { statusCode, success, message, data } → data and coerce types
             transformResponse: (response: { data?: ShippingQuote } | ShippingQuote): ShippingQuote => {
                 const data = (response as { data?: ShippingQuote })?.data ?? (response as ShippingQuote);
+                const cost = Number(data?.shippingCost ?? 0);
                 return {
-                    shippingCost: Number(data?.shippingCost ?? 0),
+                    shippingCost: cost,
                     estimatedDays: data?.estimatedDays ?? '3-5 days',
                     freeShipping: Boolean(data?.freeShipping),
                     freeReason: (data?.freeReason ?? null) as ShippingQuote['freeReason'],
+                    areaRates: {
+                        inside_dhaka: Number(data?.areaRates?.inside_dhaka ?? cost) || 0,
+                        outside_dhaka: Number(data?.areaRates?.outside_dhaka ?? cost) || 0,
+                    },
                 };
             },
         }),

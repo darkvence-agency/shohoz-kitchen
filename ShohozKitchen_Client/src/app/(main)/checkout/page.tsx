@@ -178,10 +178,13 @@ const CheckoutPage = () => {
     //     }
     // };
 
-    // ─── Delivery area: Inside / Outside Dhaka, each with its flat charge from Settings ──
+    // ─── Delivery area: Inside / Outside Dhaka. The charge is the dearest item's own
+    //     delivery charge; items without one cost the Settings rate. ──
     const { data: shipSettings } = useGetShippingSettingsQuery();
-    const insideRate = shipSettings?.defaultInsideDhakaRate ?? 70;
-    const outsideRate = shipSettings?.defaultOutsideDhakaRate ?? 130;
+    const cartProductIds = React.useMemo(
+        () => Array.from(new Set(items.map((i: any) => i.productId || i.id).filter(Boolean))) as string[],
+        [items],
+    );
     const [deliveryArea, setDeliveryArea] = useState<DeliveryArea | ''>('');
     const [areaTouched, setAreaTouched] = useState(false);
     // A city that says "Dhaka" pre-picks Inside Dhaka until the customer chooses themselves.
@@ -194,14 +197,19 @@ const CheckoutPage = () => {
     };
 
     const { data: shippingQuote } = useGetShippingQuoteQuery(
-        { city: debouncedCity || undefined, subtotal: totalPrice, zoneId: quoteZoneId, area: area || undefined },
+        { city: debouncedCity || undefined, subtotal: totalPrice, zoneId: quoteZoneId, area: area || undefined, productIds: cartProductIds },
         { skip: totalPrice <= 0 },
     );
+    // Both areas' charges for this cart, so each button shows its own price.
+    const insideRate = shippingQuote?.areaRates?.inside_dhaka ?? (shipSettings?.defaultInsideDhakaRate ?? 60);
+    const outsideRate = shippingQuote?.areaRates?.outside_dhaka ?? (shipSettings?.defaultOutsideDhakaRate ?? 120);
 
-    // Fall back to the chosen area's rate so a number always shows while the quote loads.
+    // Charge the picked area's rate. Both rates come from the same quote and do not
+    // depend on which area is picked, so switching areas updates the total at once
+    // instead of showing the previous area's charge until the next quote lands.
     // A free-shipping coupon zeroes delivery here too (matches the server's charge).
     const freeShipping = Boolean(appliedCoupon?.freeShipping) || (shippingQuote?.freeShipping ?? false);
-    const shippingCost = freeShipping ? 0 : (area ? (shippingQuote?.shippingCost ?? (area === 'inside_dhaka' ? insideRate : outsideRate)) : 0);
+    const shippingCost = freeShipping ? 0 : (area ? (area === 'inside_dhaka' ? insideRate : outsideRate) : 0);
     const estimatedDays = shippingQuote?.estimatedDays ?? '3-5 days';
     const FREE_REASON_LABEL: Record<string, string> = {
         threshold: 'Order qualifies', coupon: 'Coupon applied', product: 'Free-delivery items', quantity: 'Bulk order',

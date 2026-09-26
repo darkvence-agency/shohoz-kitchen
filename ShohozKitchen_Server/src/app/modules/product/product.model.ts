@@ -89,11 +89,14 @@ const productSchema = new Schema(
             type:         { type: String, enum: ['manufacturer', 'seller', 'none'], default: 'manufacturer' },
         },
 
-        // ── Per-product shipping config ───────────────────────────
+        // ── Per-product delivery charge ───────────────────────────
+        // 0 = this product has no charge of its own → the Inside / Outside Dhaka
+        // rate from Settings → Business applies.
         shippingConfig: {
-            freeShipping:  { type: Boolean, default: false },
-            shippingCost:  { type: Number, default: 0 },
-            estimatedDays: { type: Number, default: 3 },
+            freeShipping:     { type: Boolean, default: false },
+            insideDhakaCost:  { type: Number, default: 0 },
+            outsideDhakaCost: { type: Number, default: 0 },
+            estimatedDays:    { type: Number, default: 3 },
         },
 
         // ── Variants ──────────────────────────────────────────────

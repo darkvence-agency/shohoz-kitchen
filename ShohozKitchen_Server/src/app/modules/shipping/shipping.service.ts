@@ -5,11 +5,19 @@ import {
 
 export type FreeReason = 'product' | 'coupon' | 'threshold' | 'quantity' | null;
 
+/** One checked-out line's delivery settings (from Product.shippingConfig). */
+export interface ShippingLine {
+    freeShipping?: boolean;
+    // The product's own charge per area; 0 = not set → the Settings rate applies.
+    insideDhakaCost?: number;
+    outsideDhakaCost?: number;
+}
+
 export interface ShippingQuoteInput {
     city?: string;
     subtotal?: number;
-    // Per-item free-delivery flags (from Product.shippingConfig.freeShipping).
-    items?: { freeShipping?: boolean }[];
+    // Per-item delivery settings (from Product.shippingConfig).
+    items?: ShippingLine[];
     // Total item quantity in the cart/order (for quantity-based free shipping).
     totalQuantity?: number;
     // Resolved upstream from a free_shipping coupon.
@@ -34,6 +42,9 @@ export interface ShippingQuoteResult {
     freeReason: FreeReason;
     // Name of the zone the rate came from (for display + order records).
     zoneName?: string;
+    // What this cart costs in each area, so the cart and product pages can show
+    // both numbers before the customer has picked one.
+    areaRates: Record<DeliveryArea, number>;
 }
 
 // ── Settings singleton (admin-tunable; self-seeds defaults on first read) ──
@@ -74,6 +85,22 @@ export async function getCodChargeBps(): Promise<number> {
 }
 
 /**
+ * What an order costs to deliver to one area. Each line is charged its own
+ * Inside/Outside Dhaka rate from the product (Settings' rate when it has none),
+ * and the dearest line wins — an order pays one delivery charge, never a sum.
+ * Free-delivery lines add nothing. No lines at all → the Settings rate.
+ */
+function areaCharge(lines: ShippingLine[] | undefined, area: DeliveryArea, insideRate: number, outsideRate: number): number {
+    const settingsRate = area === 'inside_dhaka' ? insideRate : outsideRate;
+    if (!Array.isArray(lines) || lines.length === 0) return settingsRate;
+    return lines.reduce((dearest, line) => {
+        if (line?.freeShipping) return dearest;
+        const own = Number(area === 'inside_dhaka' ? line?.insideDhakaCost : line?.outsideDhakaCost) || 0;
+        return Math.max(dearest, own > 0 ? own : settingsRate);
+    }, 0);
+}
+
+/**
  * Authoritative, customer-facing shipping-cost computation. Never throws.
  *
  * Free-shipping resolution order (first match wins → cost 0):
@@ -82,7 +109,7 @@ export async function getCodChargeBps(): Promise<number> {
  *   3. Subtotal threshold — enabled AND subtotal >= threshold.
  *   4. Quantity threshold — enabled AND totalQuantity >= minItems.
  * Otherwise: zone match by city → rate.price (honoring the rate's
- * freeShippingMinimum); else default flat (inside/outside Dhaka) from settings.
+ * freeShippingMinimum); else the area charge above (product rate, or Settings').
  */
 export async function computeShippingCost(
     { city, subtotal, items, totalQuantity, couponFreeShipping, zoneId, area }: ShippingQuoteInput,
@@ -105,7 +132,9 @@ export async function computeShippingCost(
     const minItems = settings?.minItemsForFreeShipping ?? 0;
 
     const free = (reason: FreeReason): ShippingQuoteResult =>
-        ({ shippingCost: 0, estimatedDays: defaultDays, freeShipping: true, freeReason: reason });
+        ({ shippingCost: 0, estimatedDays: defaultDays, freeShipping: true, freeReason: reason, areaRates: { inside_dhaka: 0, outside_dhaka: 0 } });
+    // Both areas cost the same when a zone's rate decides the charge.
+    const bothAreas = (cost: number): Record<DeliveryArea, number> => ({ inside_dhaka: cost, outside_dhaka: cost });
 
     // 1) Every item is free-delivery (per-order shipping → all-or-nothing).
     if (Array.isArray(items) && items.length > 0 && items.every((i) => i?.freeShipping === true)) {
@@ -121,14 +150,21 @@ export async function computeShippingCost(
     // 4) Quantity threshold.
     if (qtyEnabled && minItems > 0 && Number(totalQuantity || 0) >= minItems) return free('quantity');
 
-    // 5a) Delivery area picked at checkout → the flat Inside / Outside Dhaka charge.
+    // What this cart costs in each area, from the products' own charges.
+    const areaRates: Record<DeliveryArea, number> = {
+        inside_dhaka: areaCharge(items, 'inside_dhaka', insideRate, outsideRate),
+        outside_dhaka: areaCharge(items, 'outside_dhaka', insideRate, outsideRate),
+    };
+
+    // 5a) Delivery area picked at checkout → that area's charge.
     if (isDeliveryArea(area)) {
         return {
-            shippingCost: area === 'inside_dhaka' ? insideRate : outsideRate,
+            shippingCost: areaRates[area],
             estimatedDays: defaultDays,
             freeShipping: false,
             freeReason: null,
             zoneName: DELIVERY_AREA_LABEL[area],
+            areaRates,
         };
     }
 
@@ -141,9 +177,9 @@ export async function computeShippingCost(
                 if (rate && typeof rate.price === 'number') {
                     const rateFreeMin = (rate as any).freeShippingMinimum || 0;
                     if (rateFreeMin > 0 && sub >= rateFreeMin) {
-                        return { shippingCost: 0, estimatedDays: rate.estimatedDays || defaultDays, freeShipping: true, freeReason: 'threshold', zoneName: zone.name };
+                        return { shippingCost: 0, estimatedDays: rate.estimatedDays || defaultDays, freeShipping: true, freeReason: 'threshold', zoneName: zone.name, areaRates: bothAreas(0) };
                     }
-                    return { shippingCost: rate.price, estimatedDays: rate.estimatedDays || defaultDays, freeShipping: false, freeReason: null, zoneName: zone.name };
+                    return { shippingCost: rate.price, estimatedDays: rate.estimatedDays || defaultDays, freeShipping: false, freeReason: null, zoneName: zone.name, areaRates: bothAreas(rate.price) };
                 }
             }
         } catch {
@@ -170,13 +206,14 @@ export async function computeShippingCost(
                 if (rate && typeof rate.price === 'number') {
                     const rateFreeMin = (rate as any).freeShippingMinimum || 0;
                     if (rateFreeMin > 0 && sub >= rateFreeMin) {
-                        return { shippingCost: 0, estimatedDays: rate.estimatedDays || defaultDays, freeShipping: true, freeReason: 'threshold' };
+                        return { shippingCost: 0, estimatedDays: rate.estimatedDays || defaultDays, freeShipping: true, freeReason: 'threshold', areaRates: bothAreas(0) };
                     }
                     return {
                         shippingCost: rate.price,
                         estimatedDays: rate.estimatedDays || defaultDays,
                         freeShipping: false,
                         freeReason: null,
+                        areaRates: bothAreas(rate.price),
                     };
                 }
             }
@@ -185,13 +222,14 @@ export async function computeShippingCost(
         }
     }
 
-    // 6) Default flat rate.
-    const isDhaka = cityStr.includes('dhaka');
+    // 6) No area picked — guess it from the city text.
+    const guessedArea: DeliveryArea = cityStr.includes('dhaka') ? 'inside_dhaka' : 'outside_dhaka';
     return {
-        shippingCost: isDhaka ? insideRate : outsideRate,
+        shippingCost: areaRates[guessedArea],
         estimatedDays: defaultDays,
         freeShipping: false,
         freeReason: null,
+        areaRates,
     };
 }
 

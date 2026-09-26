@@ -366,9 +366,13 @@ const CartPage = () => {
         localStorage.removeItem(COUPON_STORAGE_KEY);
     };
 
-    // ─── Estimated shipping (no city yet → backend returns the default flat rate) ──
+    // ─── Estimated shipping: the selected products' own delivery charges, per area ──
+    const selectedProductIds = useMemo(
+        () => Array.from(new Set(selectedItems.map((i) => i.productId).filter(Boolean))),
+        [selectedItems],
+    );
     const { data: shippingQuote } = useGetShippingQuoteQuery(
-        { subtotal: selectedSubtotal },
+        { subtotal: selectedSubtotal, productIds: selectedProductIds },
         { skip: selectedSubtotal <= 0 },
     );
     const couponFreeShipping = Boolean(appliedCoupon?.freeShipping);
@@ -378,9 +382,11 @@ const CartPage = () => {
     const shippingCost = 0;
 
     // Live delivery charges + free-shipping threshold ("add ৳X more for free shipping").
+    // The quote already applies the products' own charges; Settings' rate is the
+    // fallback shown while it loads.
     const { data: shipSettings } = useGetShippingSettingsQuery();
-    const insideRate = shipSettings?.defaultInsideDhakaRate ?? 70;
-    const outsideRate = shipSettings?.defaultOutsideDhakaRate ?? 130;
+    const insideRate = shippingQuote?.areaRates?.inside_dhaka ?? (shipSettings?.defaultInsideDhakaRate ?? 60);
+    const outsideRate = shippingQuote?.areaRates?.outside_dhaka ?? (shipSettings?.defaultOutsideDhakaRate ?? 120);
     const freeThreshold = shipSettings?.freeShippingByThresholdEnabled ? (shipSettings?.freeShippingThreshold || 0) : 0;
     const remainingForFree = freeThreshold > 0 && !freeShipping ? Math.max(0, freeThreshold - selectedSubtotal) : 0;
 

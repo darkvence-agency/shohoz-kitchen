@@ -18,7 +18,7 @@ import {
     useUpdateAdminOrderMutation, type AdminOrderUpdate, type OrderPaymentMethod,
 } from '@/redux/api/orderApi';
 import { useGetProductsQuery } from '@/redux/api/productApi';
-import { useGetShippingSettingsQuery, type DeliveryArea } from '@/redux/api/shippingApi';
+import { useGetShippingQuoteQuery, useGetShippingSettingsQuery, type DeliveryArea } from '@/redux/api/shippingApi';
 import { Badge, Field, INPUT, Segmented, TEXTAREA, cx } from '@/components/admin/ui';
 import {
     MoneyInput, OrderLineRow, PAYMENT_METHODS, ProductPicker,
@@ -133,8 +133,12 @@ export default function EditOrderModal({ order, onClose }: { order: any; onClose
 
     /* ─── Delivery charge ─── */
     const { data: shipSettings } = useGetShippingSettingsQuery();
-    const insideRate = shipSettings?.defaultInsideDhakaRate ?? 70;
-    const outsideRate = shipSettings?.defaultOutsideDhakaRate ?? 130;
+    // Each area's charge for these lines — the products' own charges, the way the
+    // server will recompute them on save.
+    const rowProductIds = Array.from(new Set(rows.map((l) => String(l.product?._id)).filter(Boolean)));
+    const { data: quote } = useGetShippingQuoteQuery({ subtotal, productIds: rowProductIds }, { skip: subtotal <= 0 });
+    const insideRate = quote?.areaRates?.inside_dhaka ?? (shipSettings?.defaultInsideDhakaRate ?? 60);
+    const outsideRate = quote?.areaRates?.outside_dhaka ?? (shipSettings?.defaultOutsideDhakaRate ?? 120);
     const [area, setArea] = useState<DeliveryArea | ''>(
         order.deliveryArea === 'inside_dhaka' || order.deliveryArea === 'outside_dhaka' ? order.deliveryArea : '',
     );

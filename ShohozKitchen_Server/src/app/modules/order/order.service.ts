@@ -9,7 +9,7 @@ import { Coupon } from '../coupon/coupon.model';
 import AppError from '../../utils/AppError';
 import QueryBuilder from '../../utils/QueryBuilder';
 import { notifyOrderToWhatsApp } from '../../utils/whatsappNotify';
-import { computeShippingCost, isDeliveryArea } from '../shipping/shipping.service';
+import { computeShippingCost, isDeliveryArea, ShippingLine } from '../shipping/shipping.service';
 import { logStockMovements, variantOf, StockMovementInput } from '../inventory/inventory.ledger';
 import { normalizePhone, phonePattern } from '../fraud/fraud.rules';
 
@@ -241,15 +241,25 @@ function editBlockedReason(order: any): string | null {
     return null;
 }
 
+/** A product's own delivery settings, in the shape the charge rules read. */
+function shippingLineOf(product: any): ShippingLine {
+    const cfg = product?.shippingConfig || {};
+    return {
+        freeShipping: Boolean(cfg.freeShipping),
+        insideDhakaCost: Number(cfg.insideDhakaCost) || 0,
+        outsideDhakaCost: Number(cfg.outsideDhakaCost) || 0,
+    };
+}
+
 /**
- * The `freeShipping` flag per line, which the delivery-charge rules need. An edit that
+ * The delivery settings per line, which the delivery-charge rules need. An edit that
  * restaged its lines already holds the products, so they are not read a second time.
  */
-async function freeShippingFlags(items: any[], staged: { product: any }[]): Promise<{ freeShipping: boolean }[]> {
-    if (staged.length) return staged.map((s) => ({ freeShipping: Boolean(s.product?.shippingConfig?.freeShipping) }));
+async function shippingLines(items: any[], staged: { product: any }[]): Promise<ShippingLine[]> {
+    if (staged.length) return staged.map((s) => shippingLineOf(s.product));
     const products = await Product.find({ _id: { $in: items.map((it) => it.product) } }).select('shippingConfig').lean();
-    const byId = new Map(products.map((p: any) => [String(p._id), Boolean(p.shippingConfig?.freeShipping)]));
-    return items.map((it) => ({ freeShipping: byId.get(String(it.product)) || false }));
+    const byId = new Map(products.map((p: any) => [String(p._id), shippingLineOf(p)]));
+    return items.map((it) => byId.get(String(it.product)) || {});
 }
 
 /** How an order line is matched against the same line in an edit: product + colour + size. */
@@ -455,7 +465,7 @@ const OrderService = {
             const quote = await computeShippingCost({
                 city: shippingAddress?.city || '',
                 subtotal,
-                items: stagedItems.map((s: any) => ({ freeShipping: Boolean(s.product?.shippingConfig?.freeShipping) })),
+                items: stagedItems.map((s: any) => shippingLineOf(s.product)),
                 totalQuantity: orderItems.reduce((n: number, oi: any) => n + (oi.quantity || 0), 0),
                 couponFreeShipping,
                 zoneId,
@@ -1038,7 +1048,7 @@ const OrderService = {
             const quote = await computeShippingCost({
                 city: shippingAddress?.city || '',
                 subtotal,
-                items: await freeShippingFlags(newItems, staged),
+                items: await shippingLines(newItems, staged),
                 totalQuantity: newItems.reduce((n: number, it: any) => n + (Number(it.quantity) || 0), 0),
                 couponFreeShipping,
                 zoneId: payload.zoneId,

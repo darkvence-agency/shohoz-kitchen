@@ -124,8 +124,6 @@ export default function NewOrderPage() {
     /* ─── Delivery ─── */
     const { data: zones = [] } = useGetDeliveryZonesQuery();
     const { data: shipSettings } = useGetShippingSettingsQuery();
-    const insideRate = shipSettings?.defaultInsideDhakaRate ?? 70;
-    const outsideRate = shipSettings?.defaultOutsideDhakaRate ?? 130;
     const [zoneId, setZoneId] = useState('');
     const [pickedArea, setPickedArea] = useState<DeliveryArea | ''>('');
     const [areaTouched, setAreaTouched] = useState(false);
@@ -143,10 +141,15 @@ export default function NewOrderPage() {
         if (z) setCust((c) => ({ ...c, city: z.name }));
     };
 
+    // The lines' products decide the charge (each product's own Inside / Outside rate).
+    const lineProductIds = Array.from(new Set(lines.map((l) => String(l.product._id)).filter(Boolean)));
     const { data: quote, isFetching: quoting } = useGetShippingQuoteQuery(
-        { city: city || undefined, subtotal, zoneId: quoteZone, area: area || undefined },
+        { city: city || undefined, subtotal, zoneId: quoteZone, area: area || undefined, productIds: lineProductIds },
         { skip: subtotal <= 0 },
     );
+    // What each area costs for these lines; Settings' rate covers an empty order.
+    const insideRate = quote?.areaRates?.inside_dhaka ?? (shipSettings?.defaultInsideDhakaRate ?? 60);
+    const outsideRate = quote?.areaRates?.outside_dhaka ?? (shipSettings?.defaultOutsideDhakaRate ?? 120);
 
     const [shipMode, setShipMode] = useState<ShipMode>('auto');
     const [customShip, setCustomShip] = useState('');
@@ -179,8 +182,10 @@ export default function NewOrderPage() {
     const couponDiscount = coupon ? Math.min(coupon.discount, subtotal) : 0;
 
     /* ─── Delivery charge shown ─── */
+    // A picked area uses its own rate (both come from the same quote), so switching
+    // area updates the total at once; a zone falls back to the quote's charge.
     const areaRate = area === 'inside_dhaka' ? insideRate : area === 'outside_dhaka' ? outsideRate : 0;
-    const autoDelivery = subtotal <= 0 || coupon?.freeShipping ? 0 : quote?.shippingCost ?? areaRate;
+    const autoDelivery = subtotal <= 0 || coupon?.freeShipping ? 0 : (area ? areaRate : quote?.shippingCost ?? 0);
     const delivery = shipMode === 'free' ? 0 : shipMode === 'custom' ? (customShipOk ? customShipNum : 0) : autoDelivery;
     const total = Math.max(0, subtotal - couponDiscount) + delivery;
 

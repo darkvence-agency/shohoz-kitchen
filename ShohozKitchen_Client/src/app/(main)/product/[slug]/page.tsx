@@ -128,8 +128,11 @@ export default function ProductDetailsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [product?._id]);
 
-    // Delivery charges shown in the Delivery Options box (Admin → Settings → Business).
+    // Delivery charges shown in the Delivery Options box: this product's own charge,
+    // or — when it has none — the site-wide rate from Admin → Settings → Business.
     const { data: shipSettings } = useGetShippingSettingsQuery();
+    const insideCharge = Number(product?.shippingConfig?.insideDhakaCost) || (shipSettings?.defaultInsideDhakaRate ?? 60);
+    const outsideCharge = Number(product?.shippingConfig?.outsideDhakaCost) || (shipSettings?.defaultOutsideDhakaRate ?? 120);
     const { data: reviewsData } = useGetProductReviewsQuery({ productId: product?._id }, { skip: !product?._id });
     const reviews = reviewsData?.data || [];
     // const [publicCreateReview] = usePublicCreateReviewMutation();
@@ -718,26 +721,31 @@ export default function ProductDetailsPage() {
                             {/* Delivery Options */}
                             <div style={{ padding: '14px', borderBottom: '1px solid #f0f0f0' }}>
                                 <p style={{ fontSize: '13px', fontWeight: 700, color: '#111', margin: '0 0 10px' }}>Delivery Options</p>
-                                {/* Delivery charges from Admin → Settings → Business (checkout charges the same) */}
+                                {/* This product's own delivery charge — the same one checkout charges */}
                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
                                     <FiTruck size={15} style={{ color: '#6b7280', flexShrink: 0, marginTop: '1px' }} />
                                     <div style={{ flex: 1 }}>
                                         <p style={{ fontSize: '12px', fontWeight: 600, color: '#111', margin: '0 0 4px' }}>Delivery Charge</p>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Inside Dhaka</span>
-                                            <strong style={{ color: '#111' }}>৳{shipSettings?.defaultInsideDhakaRate ?? 70}</strong>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Outside Dhaka</span>
-                                            <strong style={{ color: '#111' }}>৳{shipSettings?.defaultOutsideDhakaRate ?? 130}</strong>
-                                        </div>
+                                        {product.shippingConfig?.freeShipping ? (
+                                            <p style={{ fontSize: '12px', fontWeight: 600, color: '#16a34a', margin: 0, lineHeight: 1.6 }}>Free delivery on this item</p>
+                                        ) : (
+                                            <>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Inside Dhaka</span>
+                                                    <strong style={{ color: '#111' }}>৳{insideCharge}</strong>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Outside Dhaka</span>
+                                                    <strong style={{ color: '#111' }}>৳{outsideCharge}</strong>
+                                                </div>
+                                            </>
+                                        )}
                                         <p style={{ fontSize: '11px', color: '#9ca3af', margin: '3px 0 0' }}>
                                             Delivery in {shipSettings?.defaultEstimatedDays || '3-5 days'}
-                                            {product.shippingConfig?.freeShipping
-                                                ? ' · This item ships free'
-                                                : shipSettings?.freeShippingByThresholdEnabled && Number(shipSettings?.freeShippingThreshold) > 0
-                                                    ? ` · Free on orders over ৳${Number(shipSettings.freeShippingThreshold).toLocaleString()}`
-                                                    : ''}
+                                            {!product.shippingConfig?.freeShipping
+                                                && shipSettings?.freeShippingByThresholdEnabled && Number(shipSettings?.freeShippingThreshold) > 0
+                                                ? ` · Free on orders over ৳${Number(shipSettings.freeShippingThreshold).toLocaleString()}`
+                                                : ''}
                                         </p>
                                     </div>
                                 </div>
