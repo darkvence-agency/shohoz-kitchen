@@ -17,13 +17,16 @@ import { toast } from 'react-hot-toast';
 import { ORDER_STATUS_CONFIG, getStatusConfig, paymentMethodLabel } from '@/lib/orderStatus';
 import {
     PageHeader, Btn, SearchInput, SelectPill, FilterBar, StatTile, Badge, BadgeSelect, TableCard,
-    TH, TD, TR, EmptyRow, SkeletonRows, Pager, RowMenu, Modal, TEXTAREA, taka, fmtDateTime, cx, type Tone,
+    TH, TD, TR, EmptyRow, SkeletonRows, RowMenu, Modal, TEXTAREA, taka, fmtDateTime, cx, type Tone,
 } from '@/components/admin/ui';
 import PrintOrdersModal, { type PrintJob, type PrintKind } from '@/components/admin/print/PrintOrdersModal';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 
-const PAGE_SIZE = 10;
+// Orders load 50 at a time and "See more" adds the next 50 BELOW the ones already
+// shown, so a long selection for printing or a bulk status change is never split
+// across pages.
+const PAGE_SIZE = 50;
 
 const ORDER_TONE: Record<string, Tone> = {
     pending: 'amber', confirmed: 'blue', processing: 'purple', shipped: 'indigo', on_the_way: 'sky',
@@ -80,7 +83,7 @@ function OrdersPageInner() {
     );
     const [paymentFilter, setPaymentFilter] = useState('all');
     const [productFilter, setProductFilter] = useState('all');
-    const [page, setPage] = useState(1);
+    const [visible, setVisible] = useState(PAGE_SIZE);
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [bulkStatus, setBulkStatus] = useState('');
     const [noteFor, setNoteFor] = useState<any>(null);
@@ -89,8 +92,8 @@ function OrdersPageInner() {
     const q = useDebounced(search);
 
     const { data: ordersData, isLoading, isFetching } = useGetAdminOrdersQuery({
-        page,
-        limit: PAGE_SIZE,
+        page: 1,
+        limit: visible,
         status: statusFilter !== 'all' ? statusFilter : undefined,
         paymentStatus: paymentFilter !== 'all' ? paymentFilter : undefined,
         'items.product': productFilter !== 'all' ? productFilter : undefined,
@@ -109,9 +112,9 @@ function OrdersPageInner() {
     const stats = statsData?.data || {};
     const products: any[] = productsData?.data || [];
 
-    // Any change of filter or page starts a fresh selection.
-    const resetPage = () => { setPage(1); setSelected(new Set()); };
-    const goToPage = (p: number) => { setPage(p); setSelected(new Set()); };
+    // Any change of filter goes back to the first 50 and starts a fresh selection.
+    const resetPage = () => { setVisible(PAGE_SIZE); setSelected(new Set()); };
+    const hasMore = orders.length < (meta.total || 0);
 
     const handleStatusChange = async (orderId: string, newStatus: string) => {
         try {
@@ -236,7 +239,7 @@ function OrdersPageInner() {
                 title="Orders"
                 subtitle="Customer sales orders - from the store and taken by phone."
                 actions={<>
-                    <Btn icon={<LuDownload size={15} />} onClick={() => exportOrdersCsv(orders, `page-${page}`)}>Export</Btn>
+                    <Btn icon={<LuDownload size={15} />} onClick={() => exportOrdersCsv(orders, 'orders')}>Export</Btn>
                     {!isEditor && <Btn variant="primary" icon={<LuPlus size={16} />} href="/dashboard/admin/orders/new">New order</Btn>}
                 </>}
             />
@@ -296,7 +299,7 @@ function OrdersPageInner() {
                             <th className={`${TH} w-10`}>
                                 <input
                                     type="checkbox"
-                                    aria-label="Select all orders on this page"
+                                    aria-label="Select all orders shown"
                                     ref={(el) => { if (el) el.indeterminate = someSelected; }}
                                     checked={allSelected}
                                     onChange={toggleAll}
@@ -336,7 +339,7 @@ function OrdersPageInner() {
                                             className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-[var(--color-primary)]"
                                         />
                                     </td>
-                                    <td className={`${TD} text-gray-400`}>{(page - 1) * PAGE_SIZE + i + 1}</td>
+                                    <td className={`${TD} text-gray-400`}>{i + 1}</td>
                                     <td className={TD}>
                                         <Link href={`/dashboard/admin/orders/${o._id}`} className="font-semibold text-gray-900 hover:text-[var(--color-primary)]">{o.orderId}</Link>
                                         <p className="mt-0.5 text-xs text-gray-400" title="Steadfast consignment">{parcelId(o) || 'Not booked'}</p>
@@ -425,7 +428,16 @@ function OrdersPageInner() {
                     })}
             </div>
 
-            <Pager page={page} totalPages={meta.totalPages} total={meta.total} pageSize={PAGE_SIZE} count={orders.length} onPage={goToPage} noun="orders" />
+            <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                <p className="text-sm text-gray-500">
+                    {meta.total === 0 ? 'No orders' : `Showing ${orders.length} of ${(meta.total || 0).toLocaleString('en-IN')} orders`}
+                </p>
+                {hasMore && (
+                    <Btn onClick={() => setVisible((n) => n + PAGE_SIZE)} disabled={isFetching}>
+                        {isFetching ? 'Loading…' : `See more (${Math.min(PAGE_SIZE, (meta.total || 0) - orders.length)})`}
+                    </Btn>
+                )}
+            </div>
 
             <Modal
                 open={!!noteFor}
