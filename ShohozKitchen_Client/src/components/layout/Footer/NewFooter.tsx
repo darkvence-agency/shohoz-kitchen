@@ -260,37 +260,10 @@ const NewFooter: React.FC = () => {
                         <p className="text-xs text-gray-400">
                             {siteRes?.data?.footer?.copyright || `© 2019-${new Date().getFullYear()} ${siteRes?.data?.footer?.companyName || 'Shohoz Kitchen'}. All Rights Reserved.`}
                         </p>
-                        <div className="flex items-center gap-3">
-                            <span className="text-xs text-gray-400">
-                                Developed by{' '}
-                                <a
-                                    href="https://www.extrainweb.com/"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="font-semibold text-gray-500 hover:text-[var(--color-primary)] transition-colors"
-                                >
-                                    Extrain Web
-                                </a>
-                            </span>
-                            <a
-                                href="https://www.facebook.com/extrainweb"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                aria-label="Extrain Web on Facebook"
-                                className="text-gray-400 hover:text-[var(--color-primary)] transition-colors"
-                            >
-                                <FaFacebookF size={14} />
-                            </a>
-                            <a
-                                href="https://www.extrainweb.com/"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                aria-label="Extrain Web website"
-                                className="text-gray-400 hover:text-[var(--color-primary)] transition-colors"
-                            >
-                                <FiGlobe size={14} />
-                            </a>
-                        </div>
+                        {/* Who built the site. No website or social link yet — add one here when there is one. */}
+                        <span className="text-xs text-gray-400">
+                            Developed by <span className="font-semibold text-gray-500">Darkvence Agency</span>
+                        </span>
                     </div>
                 </div>
             </div>
