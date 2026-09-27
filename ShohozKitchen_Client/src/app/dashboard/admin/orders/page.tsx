@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { LuPlus, LuDownload, LuEye, LuExternalLink, LuStickyNote, LuX, LuPackage, LuBarcode, LuReceiptText } from 'react-icons/lu';
+import { LuPlus, LuDownload, LuEye, LuExternalLink, LuStickyNote, LuX, LuPackage, LuBarcode, LuReceiptText, LuRepeat } from 'react-icons/lu';
 import {
     useGetAdminOrdersQuery,
     useUpdateOrderStatusMutation,
@@ -27,6 +27,26 @@ import { RootState } from '@/redux/store';
 // shown, so a long selection for printing or a bulk status change is never split
 // across pages.
 const PAGE_SIZE = 50;
+
+/**
+ * Same phone, same day. Two parcels to one customer are paid for twice at the courier
+ * and are often one order placed again by mistake, so the row links straight to the
+ * other order. The server works this out (repeatToday on each order).
+ */
+function RepeatTodayChip({ info }: { info?: { count: number; position: number; other: { _id: string; orderId: string } } | null }) {
+    if (!info?.other?._id) return null;
+    const nth = (n: number) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
+    const label = info.position > 1 ? `${nth(info.position)} order today` : `1st of ${info.count} today`;
+    return (
+        <Link
+            href={`/dashboard/admin/orders/${info.other._id}`}
+            title={`Same phone ordered ${info.count} times today — open ${info.other.orderId}`}
+            className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-100"
+        >
+            <LuRepeat size={11} /> {label}
+        </Link>
+    );
+}
 
 const ORDER_TONE: Record<string, Tone> = {
     pending: 'amber', confirmed: 'blue', processing: 'purple', shipped: 'indigo', on_the_way: 'sky',
@@ -343,6 +363,7 @@ function OrdersPageInner() {
                                     <td className={TD}>
                                         <Link href={`/dashboard/admin/orders/${o._id}`} className="font-semibold text-gray-900 hover:text-[var(--color-primary)]">{o.orderId}</Link>
                                         <p className="mt-0.5 text-xs text-gray-400" title="Steadfast consignment">{parcelId(o) || 'Not booked'}</p>
+                                        <RepeatTodayChip info={o.repeatToday} />
                                     </td>
                                     <td className={TD}>
                                         <p className="max-w-[180px] truncate text-gray-900">{customerName(o)}</p>
@@ -400,6 +421,7 @@ function OrdersPageInner() {
                                         <div className="min-w-0">
                                             <Link href={`/dashboard/admin/orders/${o._id}`} className="font-semibold text-gray-900">{o.orderId}</Link>
                                             <p className="text-xs text-gray-400">{fmtDateTime(o.createdAt)}</p>
+                                            <RepeatTodayChip info={o.repeatToday} />
                                         </div>
                                     </div>
                                     {rowMenu(o)}

@@ -271,6 +271,70 @@ function lineKey(product: unknown, color?: string, size?: string): string {
     ].join('|');
 }
 
+// ── Same customer, same day ─────────────────────────────────────
+
+/** Bangladesh keeps UTC+6 all year, so the shop's "today" starts at this instant. */
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+function startOfDhakaToday(now: Date = new Date()): Date {
+    const shifted = new Date(now.getTime() + DHAKA_OFFSET_MS);
+    shifted.setUTCHours(0, 0, 0, 0);
+    return new Date(shifted.getTime() - DHAKA_OFFSET_MS);
+}
+
+/** An order that went nowhere is not a second parcel, so it doesn't count as a repeat. */
+const REPEAT_IGNORES = ['cancelled', 'returned', 'refunded'];
+
+export type RepeatToday = {
+    /** Orders from this phone today, this one included. */
+    count: number;
+    /** Where this order falls among them, oldest first. */
+    position: number;
+    /** The one to open: the order before it, or the next one for the day's first. */
+    other: { _id: string; orderId: string };
+};
+
+/**
+ * Which of `rows` share a phone with another order placed today, keyed by order id.
+ * One read of today's orders (a small set), grouped by the phone as the courier sees
+ * it — "01712-345678", "+8801712345678" and "8801712345678" are one customer.
+ */
+async function repeatsToday(rows: any[]): Promise<Map<string, RepeatToday>> {
+    const out = new Map<string, RepeatToday>();
+    if (!rows.some((r) => normalizePhone(r?.shippingAddress?.phone))) return out;
+
+    const today = await Order.find({
+        createdAt: { $gte: startOfDhakaToday() },
+        status: { $nin: REPEAT_IGNORES },
+    })
+        .select('orderId createdAt shippingAddress.phone')
+        .sort({ createdAt: 1 })
+        .limit(2000)
+        .lean();
+
+    const byPhone = new Map<string, any[]>();
+    for (const o of today) {
+        const phone = normalizePhone((o as any)?.shippingAddress?.phone);
+        if (!phone) continue;
+        const group = byPhone.get(phone);
+        if (group) group.push(o);
+        else byPhone.set(phone, [o]);
+    }
+
+    for (const row of rows) {
+        const group = byPhone.get(normalizePhone(row?.shippingAddress?.phone));
+        if (!group || group.length < 2) continue;
+        const i = group.findIndex((o) => String(o._id) === String(row._id));
+        if (i === -1) continue; // this row was not placed today
+        const other = i > 0 ? group[i - 1] : group[1];
+        out.set(String(row._id), {
+            count: group.length,
+            position: i + 1,
+            other: { _id: String(other._id), orderId: String(other.orderId || '') },
+        });
+    }
+    return out;
+}
+
 // ── Status helpers ──────────────────────────────────────────────
 const STATUS_ORDER = ['pending', 'confirmed', 'processing', 'shipped', 'on_the_way', 'out_for_delivery', 'delivery_attempt', 'delivered'];
 
@@ -303,6 +367,11 @@ function withoutStaffNotes(order: any) {
 }
 
 const OrderService = {
+    /**
+     * The admin list, with each order marked when the same phone already ordered today.
+     * Two parcels to one customer are paid for twice at the courier and are often the
+     * same order placed again by mistake, so staff see it before booking.
+     */
     async getAllOrders(query: Record<string, unknown>) {
         const orderQuery = new QueryBuilder(
             Order.find().populate('user', 'firstName lastName email phone').populate('items.product', 'name thumbnail'),
@@ -314,9 +383,13 @@ const OrderService = {
             .sort()
             .paginate();
 
-        const orders = await orderQuery.modelQuery;
+        const orders = await orderQuery.modelQuery.lean();
         const meta = await orderQuery.countTotal();
-        return { orders, meta };
+        const repeats = await repeatsToday(orders);
+        return {
+            orders: orders.map((o: any) => ({ ...o, repeatToday: repeats.get(String(o._id)) || null })),
+            meta,
+        };
     },
 
     async getMyOrders(userId: string, query: Record<string, unknown>) {
