@@ -21,6 +21,25 @@ export const uploadController = {
         });
     }),
 
+    // ── Documents (up to 10): each with its original name, for the list it lands in ──
+    uploadDocuments: catchAsync(async (req: Request, res: Response) => {
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+            return res.status(400).json({ success: false, message: 'No files uploaded' });
+        }
+        const data = files.map((f) => ({
+            url: fileToUrl(req, f),
+            name: f.originalname.slice(0, 200),
+            type: f.mimetype,
+        }));
+        sendResponse(res, {
+            statusCode: 200,
+            success: true,
+            message: `${data.length} file(s) uploaded`,
+            data,
+        });
+    }),
+
     // ── Multiple images (up to 10) ────────────────────────────
     uploadMultiple: catchAsync(async (req: Request, res: Response) => {
         const files = req.files as Express.Multer.File[];

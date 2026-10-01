@@ -1,5 +1,6 @@
 import express from 'express';
-import { upload } from '../../utils/fileUpload';
+import { upload, uploadDocuments } from '../../utils/fileUpload';
+import { authMiddleware, authorizeRoles } from '../../middlewares/auth';
 import { uploadController } from './upload.controller';
 
 const router = express.Router();
@@ -23,6 +24,16 @@ router.post(
     '/my-images',
     upload.array('images', 5),
     uploadController.uploadMultiple,
+);
+
+// POST /api/upload/documents — up to 10 photos or documents (PDF, Word, Excel).
+// Staff only: this is where receipts and bills for Expenses are filed.
+router.post(
+    '/documents',
+    authMiddleware,
+    authorizeRoles('admin'),
+    uploadDocuments.array('files', 10),
+    uploadController.uploadDocuments,
 );
 
 export const UploadRoutes = router;

@@ -33,6 +33,17 @@ const receiptUrl = z
     .max(500, 'Receipt link is too long')
     .refine((v) => v === '' || /^https?:\/\/\S+$/i.test(v), 'Receipt must be an uploaded file link');
 
+/** How many files one expense may carry. Mirrored in the dashboard's expense form. */
+export const MAX_ATTACHMENTS = 10;
+
+const attachments = z
+    .array(z.object({
+        url: z.string().trim().max(500, 'File link is too long').regex(/^https?:\/\/\S+$/i, 'Attachments must be uploaded file links'),
+        name: z.string().trim().max(200, 'File name is too long').optional(),
+        type: z.string().trim().max(120, 'File type is too long').optional(),
+    }).strict())
+    .max(MAX_ATTACHMENTS, `Attach at most ${MAX_ATTACHMENTS} files to one expense`);
+
 const text = (max: number, label: string) => z.string().trim().max(max, `${label} is too long (max ${max})`);
 
 export const SORTS = ['date_desc', 'date_asc', 'amount_desc', 'amount_asc', 'recent'] as const;
@@ -80,6 +91,7 @@ const expenseBody = {
     amount: money,
     note: text(500, 'Note'),
     receiptUrl,
+    attachments,
 };
 
 export const createExpenseValidation = z.object({
@@ -94,6 +106,7 @@ export const createExpenseValidation = z.object({
             paidBy: expenseBody.paidBy.optional(),
             note: expenseBody.note.optional(),
             receiptUrl: expenseBody.receiptUrl.optional(),
+            attachments: expenseBody.attachments.optional(),
         })
         .strict(),
 });
@@ -110,6 +123,7 @@ export const updateExpenseValidation = z.object({
             paidBy: expenseBody.paidBy.optional(),
             note: expenseBody.note.optional(),
             receiptUrl: expenseBody.receiptUrl.optional(),
+            attachments: expenseBody.attachments.optional(),
         })
         .strict()
         .refine((b) => Object.keys(b).length > 0, 'Nothing to update'),

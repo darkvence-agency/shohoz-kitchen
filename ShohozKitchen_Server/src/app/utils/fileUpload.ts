@@ -45,3 +45,35 @@ export function fileToUrl(req: Request, file: Express.Multer.File): string {
     const base = (config.backend_url || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
     return `${base}/uploads/${file.filename}`;
 }
+
+// ── Documents: receipts, bills and papers filed by staff ────────────────────
+// Photos plus PDF, Word and Excel. SVG and HTML are left out on purpose: the
+// /uploads folder is served from the API's own origin, and either could carry
+// script. Only staff reach this (see upload.routes.ts), unlike the image route.
+export const DOCUMENT_TYPES: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/heic': '.heic',
+    'application/pdf': '.pdf',
+    'application/msword': '.doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'text/csv': '.csv',
+};
+
+export const uploadDocuments = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, uploadsDir),
+        // The extension comes from the checked type, never from the sender's file name.
+        filename: (_req, file, cb) => {
+            cb(null, `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${DOCUMENT_TYPES[file.mimetype]}`);
+        },
+    }),
+    limits: { fileSize: 10 * 1024 * 1024, files: 10 }, // 10MB each, 10 at a time
+    fileFilter: (_req, file, cb) => {
+        if (DOCUMENT_TYPES[file.mimetype]) cb(null, true);
+        else cb(new Error('Attach a photo (JPG, PNG, WebP), a PDF, or a Word or Excel file'));
+    },
+});

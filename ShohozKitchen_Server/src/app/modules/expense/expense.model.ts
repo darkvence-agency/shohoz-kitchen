@@ -37,7 +37,19 @@ const expenseSchema = new Schema(
         paidBy: { type: String, enum: PAID_BY, default: 'cash' },
         amount: { type: Number, required: true, min: 0.01 },
         note: { type: String, default: '', trim: true, maxlength: 500 },
+        // The single receipt photo an expense could carry before attachments existed.
+        // Still read (the API shows it as the first attachment) but no longer written:
+        // saving an expense's attachments clears it.
         receiptUrl: { type: String, default: '', trim: true },
+        // Receipts, bills and other papers: photos or documents, up to MAX_ATTACHMENTS.
+        attachments: {
+            type: [new Schema({
+                url: { type: String, required: true, trim: true },
+                name: { type: String, default: '', trim: true, maxlength: 200 },
+                type: { type: String, default: '', trim: true, maxlength: 120 },
+            }, { _id: false })],
+            default: [],
+        },
         createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     },
     { timestamps: true }

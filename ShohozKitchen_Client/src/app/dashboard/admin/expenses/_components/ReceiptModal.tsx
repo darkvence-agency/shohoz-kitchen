@@ -1,61 +1,55 @@
 "use client";
 
-import React, { useState } from 'react';
-import { LuExternalLink, LuRefreshCw, LuTrash2, LuImageOff } from 'react-icons/lu';
+import React from 'react';
 import { Modal, Btn, taka } from '@/components/admin/ui';
-import type { IExpense } from '@/redux/api/expenseApi';
+import { MAX_EXPENSE_ATTACHMENTS, type IExpense, type IExpenseAttachment } from '@/redux/api/expenseApi';
 import { fmtDay } from './shared';
+import { AttachmentDrop, AttachmentTiles, useAttachmentUpload } from './Attachments';
 
-/** View an expense's receipt, with Replace and Remove. */
-export default function ReceiptModal({ expense, busy, onReplace, onRemove, onClose }: {
+/**
+ * Every receipt and paper filed with an expense: open any of them, add more, remove one.
+ * Each change is saved straight away through `onSave`, with the whole new list.
+ */
+export default function ReceiptModal({ expense, busy, onSave, onClose }: {
     expense: IExpense;
     busy?: boolean;
-    onReplace: () => void;
-    onRemove: () => void;
+    onSave: (attachments: IExpenseAttachment[]) => Promise<void> | void;
     onClose: () => void;
 }) {
-    const [broken, setBroken] = useState(false);
+    const files = expense.attachments || [];
+    const { upload, uploading } = useAttachmentUpload();
+
+    const add = async (picked: FileList | null) => {
+        const added = await upload(picked, MAX_EXPENSE_ATTACHMENTS - files.length);
+        if (added.length) await onSave([...files, ...added]);
+    };
+
+    const remove = async (i: number) => {
+        const name = files[i]?.name || 'this file';
+        if (!window.confirm(`Remove ${name} from ${expense.voucherNo}?`)) return;
+        await onSave(files.filter((_, j) => j !== i));
+    };
+
     return (
         <Modal
             open
             onClose={onClose}
             width="max-w-2xl"
-            title={`Receipt · ${expense.voucherNo}`}
+            title={`Receipts & documents · ${expense.voucherNo}`}
             subtitle={`${expense.title} · ${taka(expense.amount, expense.amount % 1 ? 2 : 0)} · ${fmtDay(expense.day)}`}
-            footer={<>
-                <button
-                    type="button"
-                    onClick={onRemove}
-                    disabled={busy}
-                    className="mr-auto inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
-                >
-                    <LuTrash2 size={15} /> Remove
-                </button>
-                <Btn icon={<LuRefreshCw size={15} />} onClick={onReplace} disabled={busy}>{busy ? 'Uploading…' : 'Replace'}</Btn>
-                <a
-                    href={expense.receiptUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--color-primary)] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--color-primary-dark)]"
-                >
-                    <LuExternalLink size={15} /> Open
-                </a>
-            </>}
+            footer={<Btn onClick={onClose}>Done</Btn>}
         >
-            <div className="flex min-h-[240px] items-center justify-center rounded-xl bg-gray-50 p-3">
-                {broken ? (
-                    <div className="text-center text-sm text-gray-500">
-                        <LuImageOff size={28} className="mx-auto mb-2 text-gray-300" />
-                        The receipt could not be shown here. Try opening it in a new tab.
-                    </div>
+            <div className={busy || uploading ? 'pointer-events-none opacity-60' : undefined}>
+                {files.length ? (
+                    <AttachmentTiles items={files} onRemove={remove} size="lg" />
                 ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                        src={expense.receiptUrl}
-                        alt={`Receipt for ${expense.title}`}
-                        onError={() => setBroken(true)}
-                        className="max-h-[60vh] max-w-full rounded-lg object-contain"
-                    />
+                    <p className="py-6 text-center text-sm text-gray-500">Nothing filed with this expense yet.</p>
+                )}
+                <p className="mt-3 text-xs text-gray-400">
+                    {files.length}/{MAX_EXPENSE_ATTACHMENTS} files · click one to open it full size
+                </p>
+                {files.length < MAX_EXPENSE_ATTACHMENTS && (
+                    <div className="mt-4"><AttachmentDrop onFiles={add} uploading={uploading || busy} /></div>
                 )}
             </div>
         </Modal>

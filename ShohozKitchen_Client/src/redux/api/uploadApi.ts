@@ -32,6 +32,17 @@ export const uploadApi = baseApi.injectEndpoints({
                 formData: true,
             }),
         }),
+
+        // Photos or documents (PDF, Word, Excel), up to 10, staff only — POST /api/upload/documents.
+        // Each comes back with the name it was uploaded under.
+        uploadDocuments: builder.mutation<{ data: { url: string; name: string; type: string }[] }, FormData>({
+            query: (formData) => ({
+                url: '/upload/documents',
+                method: 'POST',
+                body: formData,
+                formData: true,
+            }),
+        }),
     }),
 });
 
@@ -39,4 +50,5 @@ export const {
     useUploadImageMutation,
     useUploadImagesMutation,
     useUploadMyImagesMutation,
+    useUploadDocumentsMutation,
 } = uploadApi;

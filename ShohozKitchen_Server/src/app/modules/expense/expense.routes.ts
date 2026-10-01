@@ -13,11 +13,12 @@ import {
     idParamValidation,
 } from './expense.validation';
 
-// Mounted at /api/expenses — the admin's spending ledger. Admin only on every route
-// (authorizeRoles lets superadmin through as well); nothing here is public.
+// Mounted at /api/expenses — the shop's spending ledger. Admins and super admins
+// (authorizeRoles lets superadmin through as well); editors never, nothing public.
+// The owner opened it to admins on 2026-10-01; the rest of the money pages
+// (Accounts, Investors, Courier payouts) stay super admin only.
 const router = express.Router();
-// Money / dealers: super admin only (owner's rule — admins and editors never see it).
-const admin = [authMiddleware, authorizeRoles('superadmin')];
+const admin = [authMiddleware, authorizeRoles('admin')];
 
 // Categories (heads of spending). Listed first so "/categories" never reads as an expense id.
 router.get('/categories', ...admin, ExpenseController.listCategories);

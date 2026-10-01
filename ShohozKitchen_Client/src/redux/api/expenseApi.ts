@@ -28,6 +28,18 @@ export interface IExpenseCategory {
     createdAt: string;
 }
 
+/** A receipt, bill or other paper filed with an expense: a photo or a document. */
+export interface IExpenseAttachment {
+    url: string;
+    /** The name it was uploaded under. */
+    name?: string;
+    /** Its type, e.g. image/jpeg or application/pdf. Old receipts say just "image". */
+    type?: string;
+}
+
+/** How many files one expense may carry — the server allows the same. */
+export const MAX_EXPENSE_ATTACHMENTS = 10;
+
 export interface IExpense {
     _id: string;
     seq: number;
@@ -43,6 +55,9 @@ export interface IExpense {
     paidBy: PaidBy;
     amount: number;
     note: string;
+    /** Every file filed with it. An old single receipt arrives here as the first one. */
+    attachments: IExpenseAttachment[];
+    /** @deprecated read attachments; kept only because old expenses still carry it. */
     receiptUrl: string;
     createdBy?: { _id: string; firstName?: string; lastName?: string } | null;
     createdAt: string;
@@ -104,7 +119,8 @@ export interface IExpenseInput {
     reference?: string;
     paidBy?: PaidBy;
     note?: string;
-    receiptUrl?: string;
+    /** The whole list — it replaces what the expense had. */
+    attachments?: IExpenseAttachment[];
 }
 
 type Wrapped<T> = { data: T };

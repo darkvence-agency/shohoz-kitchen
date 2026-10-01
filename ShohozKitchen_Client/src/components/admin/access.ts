@@ -2,8 +2,9 @@
 // (authorizeRoles on each route); this only keeps the menu and the pages in step.
 //
 //   superadmin — everything.
-//   admin      — everything except money and dealers (Accounts, Expenses, Investors,
-//                Courier payouts, Suppliers, Purchases) and Roles; cannot delete users.
+//   admin      — everything except money and dealers (Accounts, Investors, Courier
+//                payouts, Suppliers, Purchases), Staff and Roles; cannot delete users.
+//                Expenses is the one money page admins do open.
 //   editor     — the order desk and the catalogue: confirm / update orders, print
 //                labels and invoices, add and update products, fraud check.
 
@@ -20,8 +21,8 @@ export const ROLE_LABEL: Record<string, string> = {
 
 /** One line per role, for staff screens. */
 export const ROLE_HINT: Record<StaffRole, string> = {
-    superadmin: 'Everything, including money, dealers, roles and deleting users.',
-    admin: 'Runs the shop. No money or dealer pages, no roles, cannot delete users.',
+    superadmin: 'Everything, including money, dealers, roles, adding super admins and deleting users.',
+    admin: 'Runs the shop, including Expenses. No other money or dealer pages, no roles, cannot delete users.',
     editor: 'Order desk and catalogue: confirms orders, prints labels and invoices, adds and updates products.',
 };
 
@@ -32,11 +33,12 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
         'Money: Accounts overview, Expenses, Investors, Courier payouts',
         'Dealers: Suppliers and Purchases',
         'Digital marketing: Tag Manager, Analytics, pixels, Search Console, SEO',
-        'Staff: add admins and editors, change roles, and delete users',
+        'Staff: add super admins, admins and editors, change roles, and delete users (other super admins too)',
     ],
     admin: [
         'Dashboard, Reports, Staff activity, Orders, Products, Customers, Inventory, Settings and the rest',
-        'No money pages (Accounts, Expenses, Investors, Courier payouts)',
+        'Expenses: record, edit and attach receipts',
+        'No other money pages (Accounts, Investors, Courier payouts)',
         'No dealer pages (Suppliers, Purchases), no Digital marketing, Staff or Roles',
         'Can block users but cannot delete them',
     ],
@@ -50,7 +52,7 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
 };
 
 /** Pages only the super admin opens (money and dealers, digital marketing, staff and roles). */
-const SUPERADMIN_ONLY = ['/accounts', '/expenses', '/investors', '/courier-payouts', '/suppliers', '/purchases', '/marketing', '/staff', '/roles'];
+const SUPERADMIN_ONLY = ['/accounts', '/investors', '/courier-payouts', '/suppliers', '/purchases', '/marketing', '/staff', '/roles'];
 
 /**
  * Everything an editor may open (and nothing else). '/' is the Dashboard itself,

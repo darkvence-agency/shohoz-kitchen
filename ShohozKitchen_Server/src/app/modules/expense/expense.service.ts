@@ -44,10 +44,29 @@ interface ExpenseInput {
     amount?: number;
     note?: string;
     receiptUrl?: string;
+    attachments?: Attachment[];
+}
+
+type Attachment = { url: string; name?: string; type?: string };
+
+/**
+ * Everything filed with an expense. An expense saved before attachments existed has at
+ * most one receipt photo in `receiptUrl`; it is shown as the first attachment, so the
+ * dashboard only ever deals with the list.
+ */
+function attachmentsOf(e: any): Attachment[] {
+    const list: Attachment[] = Array.isArray(e?.attachments) ? e.attachments : [];
+    const legacy = String(e?.receiptUrl || '').trim();
+    return legacy && !list.some((a) => a.url === legacy)
+        ? [{ url: legacy, name: 'Receipt', type: 'image' }, ...list]
+        : list;
 }
 
 /** A stored expense as the API returns it: its Dhaka `day` alongside the stored instant. */
-const present = (e: any) => (e ? { ...e, day: toDhakaDay(e.date) } : e);
+const present = (e: any) => (e ? { ...e, day: toDhakaDay(e.date), attachments: attachmentsOf(e) } : e);
+
+const cleanAttachments = (list: Attachment[]) =>
+    list.map((a) => ({ url: a.url, name: a.name || '', type: a.type || '' }));
 
 async function nextSeq(): Promise<number> {
     const c: any = await ExpenseCounter.findOneAndUpdate(
@@ -122,7 +141,17 @@ const ExpenseService = {
                                 _id: null,
                                 total: { $sum: '$amount' },
                                 count: { $sum: 1 },
-                                withReceipt: { $sum: { $cond: [{ $gt: ['$receiptUrl', ''] }, 1, 0] } },
+                                // Expenses with any file at all: an attachment, or an old single receipt.
+                                withReceipt: {
+                                    $sum: {
+                                        $cond: [{
+                                            $or: [
+                                                { $gt: [{ $size: { $ifNull: ['$attachments', []] } }, 0] },
+                                                { $gt: ['$receiptUrl', ''] },
+                                            ],
+                                        }, 1, 0],
+                                    },
+                                },
                                 first: { $min: '$date' },
                                 last: { $max: '$date' },
                             },
@@ -212,7 +241,8 @@ const ExpenseService = {
             paidBy: payload.paidBy || 'cash',
             amount: round2(payload.amount),
             note: payload.note || '',
-            receiptUrl: payload.receiptUrl || '',
+            receiptUrl: payload.attachments ? '' : payload.receiptUrl || '',
+            attachments: cleanAttachments(payload.attachments || []),
             createdBy: userId || null,
         };
         if (!(doc.amount > 0)) throw new AppError(400, 'Amount must be at least ৳0.01');
@@ -246,6 +276,13 @@ const ExpenseService = {
         }
         for (const k of ['title', 'paidTo', 'reference', 'paidBy', 'note', 'receiptUrl'] as const) {
             if (payload[k] !== undefined) e[k] = payload[k];
+        }
+        // The list as the dashboard sent it is the whole set — it already includes the
+        // old single receipt (present() shows it as the first attachment), so that field
+        // is cleared rather than shown twice.
+        if (payload.attachments !== undefined) {
+            e.attachments = cleanAttachments(payload.attachments);
+            e.receiptUrl = '';
         }
         await e.save();
         return this.getOne(id);

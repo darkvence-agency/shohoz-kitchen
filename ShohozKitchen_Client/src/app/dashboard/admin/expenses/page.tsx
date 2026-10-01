@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import {
-    LuPlus, LuFileText, LuDownload, LuTags, LuPencil, LuPrinter, LuPaperclip, LuImage, LuTrash2, LuImageOff,
+    LuPlus, LuFileText, LuDownload, LuTags, LuPencil, LuPrinter, LuPaperclip, LuTrash2,
     LuTriangleAlert, LuWallet, LuReceipt, LuChartPie, LuArrowUp, LuArrowDown, LuArrowUpDown, LuX, LuHash,
 } from 'react-icons/lu';
 import {
@@ -14,9 +14,10 @@ import {
     PAID_BY_OPTIONS, paidByLabel,
     useGetExpenseListQuery, useGetExpenseSummaryQuery, useGetExpenseCategoryListQuery, useLazyGetExpenseExportQuery,
     useUpdateExpenseMutation, useDeleteExpenseMutation,
-    type IExpense, type IExpenseFilters, type ExpenseSort, type PaidBy,
+    MAX_EXPENSE_ATTACHMENTS,
+    type IExpense, type IExpenseAttachment, type IExpenseFilters, type ExpenseSort, type PaidBy,
 } from '@/redux/api/expenseApi';
-import { useUploadImageMutation } from '@/redux/api/uploadApi';
+import { ATTACHMENT_ACCEPT, useAttachmentUpload } from './_components/Attachments';
 import {
     dhakaToday, fmtDay, fmtRange, presetRange, PERIOD_OPTIONS, type PeriodKey,
     errMsg, useDebounced, usePage, downloadCsv, monthKeysBetween, DATE_PILL,
@@ -109,46 +110,42 @@ export default function ExpensesPage() {
         if (outside) toast(`It is dated ${fmtDay(e.day)}, outside the period shown (${periodLabel}).`, { duration: 6000 });
     };
 
-    /* ─── Receipts ─── */
+    /* ─── Receipts and papers ─── */
     const [updateExpense] = useUpdateExpenseMutation();
-    const [uploadImage] = useUploadImageMutation();
+    const { upload } = useAttachmentUpload();
     const fileRef = useRef<HTMLInputElement>(null);
     const attachFor = useRef<IExpense | null>(null);
     const [uploadingId, setUploadingId] = useState<string | null>(null);
 
-    const pickReceipt = (e: IExpense) => {
+    const pickFiles = (e: IExpense) => {
         attachFor.current = e;
         fileRef.current?.click();
     };
 
-    const onReceiptFile = async (file?: File) => {
-        const e = attachFor.current;
-        if (!file || !e) return;
-        if (!file.type.startsWith('image/')) { toast.error('Attach a photo or scan of the receipt (JPG, PNG, WebP)'); return; }
-        if (file.size > 10 * 1024 * 1024) { toast.error('The file must be under 10 MB'); return; }
+    /** Save an expense's whole list of files. */
+    const saveFiles = async (e: IExpense, attachments: IExpenseAttachment[]) => {
         setUploadingId(e._id);
         try {
-            const fd = new FormData();
-            fd.append('image', file);
-            const res = await uploadImage(fd).unwrap();
-            await updateExpense({ id: e._id, receiptUrl: res.data.url }).unwrap();
-            toast.success(e.receiptUrl ? `Receipt replaced on ${e.voucherNo}` : `Receipt attached to ${e.voucherNo}`);
+            await updateExpense({ id: e._id, attachments }).unwrap();
+            const added = attachments.length - (e.attachments?.length || 0);
+            toast.success(added > 0
+                ? `${added} file${added === 1 ? '' : 's'} added to ${e.voucherNo}`
+                : `Updated the files on ${e.voucherNo}`);
         } catch (err) {
-            toast.error(errMsg(err, 'Could not attach the receipt'));
+            toast.error(errMsg(err, 'Could not save the files'));
         } finally {
             setUploadingId(null);
         }
     };
 
-    const removeReceipt = async (e: IExpense) => {
-        if (!window.confirm(`Remove the receipt from ${e.voucherNo} (${e.title})?`)) return;
-        try {
-            await updateExpense({ id: e._id, receiptUrl: '' }).unwrap();
-            toast.success('Receipt removed');
-            setViewingId(null);
-        } catch (err) {
-            toast.error(errMsg(err, 'Could not remove the receipt'));
-        }
+    const onPickedFiles = async (picked: FileList | null) => {
+        const e = attachFor.current;
+        if (!e || !picked?.length) return;
+        const current = e.attachments || [];
+        setUploadingId(e._id);
+        const added = await upload(picked, MAX_EXPENSE_ATTACHMENTS - current.length);
+        if (added.length) await saveFiles(e, [...current, ...added]);
+        else setUploadingId(null);
     };
 
     /* ─── Delete ─── */
@@ -170,8 +167,8 @@ export default function ExpensesPage() {
             const res = await runExport({ ...filters, sort }, false).unwrap();
             if (!res.rows.length) { toast.error('Nothing to export for these filters'); return; }
             downloadCsv(`expenses_${range.from || 'start'}_to_${range.to || today}.csv`, [
-                ['Voucher', 'Date', 'What for', 'Category', 'Paid to', 'Reference', 'Paid by', 'Amount (BDT)', 'Note', 'Receipt'],
-                ...res.rows.map((r) => [r.voucherNo, r.day, r.title, r.category?.name || '', r.paidTo, r.reference, paidByLabel(r.paidBy), r.amount, r.note, r.receiptUrl]),
+                ['Voucher', 'Date', 'What for', 'Category', 'Paid to', 'Reference', 'Paid by', 'Amount (BDT)', 'Note', 'Receipts & documents'],
+                ...res.rows.map((r) => [r.voucherNo, r.day, r.title, r.category?.name || '', r.paidTo, r.reference, paidByLabel(r.paidBy), r.amount, r.note, (r.attachments || []).map((f) => f.url).join(' ')]),
             ]);
             toast.success(res.truncated
                 ? `Exported the first ${res.rows.length.toLocaleString('en-IN')} of ${res.total.toLocaleString('en-IN')}. Narrow the period for the rest.`
@@ -201,13 +198,13 @@ export default function ExpensesPage() {
             <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-gray-200 px-3 text-xs text-gray-500">
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-[var(--color-primary)]" /> Uploading…
             </span>
-        ) : e.receiptUrl ? (
+        ) : e.attachments?.length ? (
             <button type="button" onClick={() => setViewingId(e._id)} className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100">
-                <LuImage size={14} /> View receipt
+                <LuPaperclip size={14} /> {e.attachments.length} file{e.attachments.length === 1 ? '' : 's'}
             </button>
         ) : (
-            <button type="button" onClick={() => pickReceipt(e)} className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50">
-                <LuPaperclip size={14} /> Attach receipt
+            <button type="button" onClick={() => pickFiles(e)} className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50">
+                <LuPaperclip size={14} /> Attach files
             </button>
         )
     );
@@ -216,9 +213,8 @@ export default function ExpensesPage() {
         <RowMenu items={[
             { label: 'Edit', icon: <LuPencil size={15} />, onClick: () => setForm({ key: Date.now(), expense: e }) },
             { label: 'Print voucher', icon: <LuPrinter size={15} />, onClick: () => setVoucher({ expense: e }) },
-            { label: 'View receipt', icon: <LuImage size={15} />, onClick: () => setViewingId(e._id), hidden: !e.receiptUrl },
-            { label: e.receiptUrl ? 'Replace receipt' : 'Attach receipt', icon: <LuPaperclip size={15} />, onClick: () => pickReceipt(e) },
-            { label: 'Remove receipt', icon: <LuImageOff size={15} />, onClick: () => removeReceipt(e), hidden: !e.receiptUrl },
+            { label: 'Receipts & documents', icon: <LuFileText size={15} />, onClick: () => setViewingId(e._id), hidden: !e.attachments?.length },
+            { label: 'Add files', icon: <LuPaperclip size={15} />, onClick: () => pickFiles(e), hidden: (e.attachments?.length || 0) >= MAX_EXPENSE_ATTACHMENTS },
             { label: 'Delete', icon: <LuTrash2 size={15} />, onClick: () => remove(e), danger: true },
         ]} />
     );
@@ -416,7 +412,7 @@ export default function ExpensesPage() {
                 </TableCard>
             </div>
 
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(ev) => { onReceiptFile(ev.target.files?.[0]); ev.target.value = ''; }} />
+            <input ref={fileRef} type="file" multiple accept={ATTACHMENT_ACCEPT} className="hidden" onChange={(ev) => { onPickedFiles(ev.target.files); ev.target.value = ''; }} />
 
             {form && (
                 <ExpenseFormModal
@@ -434,8 +430,7 @@ export default function ExpensesPage() {
                 <ReceiptModal
                     expense={viewing}
                     busy={uploadingId === viewing._id}
-                    onReplace={() => pickReceipt(viewing)}
-                    onRemove={() => removeReceipt(viewing)}
+                    onSave={(list) => saveFiles(viewing, list)}
                     onClose={() => setViewingId(null)}
                 />
             )}

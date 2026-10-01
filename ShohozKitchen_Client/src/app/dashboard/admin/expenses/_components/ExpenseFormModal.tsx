@@ -1,20 +1,22 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { LuPaperclip, LuPlus, LuX, LuCheck, LuImage } from 'react-icons/lu';
+import { LuPlus, LuX, LuCheck } from 'react-icons/lu';
 import { Modal, Btn, Field, INPUT, TEXTAREA, taka, cx } from '@/components/admin/ui';
 import {
     PAID_BY_OPTIONS,
     useCreateExpenseMutation,
     useUpdateExpenseMutation,
     useCreateExpenseCategoryMutation,
+    MAX_EXPENSE_ATTACHMENTS,
     type IExpense,
+    type IExpenseAttachment,
     type IExpenseCategory,
     type IExpenseInput,
     type PaidBy,
 } from '@/redux/api/expenseApi';
-import { useUploadImageMutation } from '@/redux/api/uploadApi';
+import { AttachmentDrop, AttachmentTiles, useAttachmentUpload } from './Attachments';
 import { dhakaToday, parseAmount, takaInWords, errMsg, fieldErrors, fmtDay } from './shared';
 
 type Form = {
@@ -26,7 +28,7 @@ type Form = {
     reference: string;
     paidBy: PaidBy;
     note: string;
-    receiptUrl: string;
+    attachments: IExpenseAttachment[];
 };
 type Errors = Partial<Record<keyof Form, string>>;
 
@@ -39,7 +41,7 @@ const blank = (today: string, keep?: Partial<Form>): Form => ({
     reference: '',
     paidBy: keep?.paidBy || 'cash',
     note: '',
-    receiptUrl: '',
+    attachments: [],
 });
 
 const fromExpense = (e: IExpense): Form => ({
@@ -51,7 +53,7 @@ const fromExpense = (e: IExpense): Form => ({
     reference: e.reference || '',
     paidBy: e.paidBy || 'cash',
     note: e.note || '',
-    receiptUrl: e.receiptUrl || '',
+    attachments: e.attachments || [],
 });
 
 function validate(f: Form, today: string): Errors {
@@ -97,7 +99,7 @@ export default function ExpenseFormModal({ expense, categories, payees, onClose,
 
     const [createExpense, { isLoading: creating }] = useCreateExpenseMutation();
     const [updateExpense, { isLoading: updating }] = useUpdateExpenseMutation();
-    const [uploadImage, { isLoading: uploading }] = useUploadImageMutation();
+    const { upload, uploading } = useAttachmentUpload();
     const [createCategory, { isLoading: addingCat }] = useCreateExpenseCategoryMutation();
     const busy = creating || updating || uploading;
 
@@ -122,21 +124,12 @@ export default function ExpenseFormModal({ expense, categories, payees, onClose,
         }
     };
 
-    /* ─── Receipt ─── */
-    const fileRef = useRef<HTMLInputElement>(null);
-    const onFile = async (file?: File) => {
-        if (!file) return;
-        if (!file.type.startsWith('image/')) { toast.error('Attach a photo or scan of the receipt (JPG, PNG, WebP)'); return; }
-        if (file.size > 10 * 1024 * 1024) { toast.error('The file must be under 10 MB'); return; }
-        const fd = new FormData();
-        fd.append('image', file);
-        try {
-            const res = await uploadImage(fd).unwrap();
-            set('receiptUrl', res.data.url);
-        } catch (err) {
-            toast.error(errMsg(err, 'Upload failed. Try again.'));
-        }
+    /* ─── Receipts and papers ─── */
+    const addFiles = async (files: FileList | null) => {
+        const added = await upload(files, MAX_EXPENSE_ATTACHMENTS - form.attachments.length);
+        if (added.length) setForm((f) => ({ ...f, attachments: [...f.attachments, ...added] }));
     };
+    const removeFile = (i: number) => setForm((f) => ({ ...f, attachments: f.attachments.filter((_, j) => j !== i) }));
 
     /* ─── Save ─── */
     const submit = async (again = false) => {
@@ -155,7 +148,7 @@ export default function ExpenseFormModal({ expense, categories, payees, onClose,
             reference: form.reference.trim(),
             paidBy: form.paidBy,
             note: form.note.trim(),
-            receiptUrl: form.receiptUrl,
+            attachments: form.attachments,
         };
         try {
             const saved = editing && expense
@@ -277,40 +270,18 @@ export default function ExpenseFormModal({ expense, categories, payees, onClose,
                 </Field>
 
                 <div className="sm:col-span-2">
-                    <span className="mb-1.5 block text-sm font-medium text-gray-700">Receipt</span>
-                    {form.receiptUrl ? (
-                        <div className="flex items-center gap-3 rounded-xl border border-gray-200 p-2.5">
-                            <a href={form.receiptUrl} target="_blank" rel="noopener noreferrer" className="block h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={form.receiptUrl} alt="Receipt" className="h-full w-full object-cover" />
-                            </a>
-                            <div className="min-w-0 flex-1 text-sm">
-                                <p className="font-medium text-gray-900">Receipt attached</p>
-                                <a href={form.receiptUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-[var(--color-primary)]">Open full size</a>
-                            </div>
-                            <Btn variant="ghost" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? 'Uploading…' : 'Replace'}</Btn>
-                            <button type="button" onClick={() => set('receiptUrl', '')} className="inline-flex h-9 items-center rounded-full px-3 text-sm font-semibold text-red-600 transition hover:bg-red-50">Remove</button>
-                        </div>
-                    ) : (
-                        <button
-                            type="button"
-                            onClick={() => fileRef.current?.click()}
-                            disabled={uploading}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => { e.preventDefault(); onFile(e.dataTransfer.files?.[0]); }}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 px-4 py-4 text-sm text-gray-500 transition hover:border-[var(--color-primary-border)] hover:bg-[var(--color-primary-surface)] disabled:cursor-wait"
-                        >
-                            {uploading ? <>Uploading…</> : <><LuPaperclip size={16} /> Attach a photo of the receipt <span className="hidden text-xs text-gray-400 sm:inline">(optional, JPG / PNG, up to 10 MB)</span></>}
-                        </button>
+                    <span className="mb-1.5 flex items-baseline justify-between text-sm font-medium text-gray-700">
+                        Receipts &amp; documents
+                        <span className="text-xs font-normal text-gray-400">{form.attachments.length}/{MAX_EXPENSE_ATTACHMENTS}</span>
+                    </span>
+                    {form.attachments.length > 0 && (
+                        <div className="mb-2.5"><AttachmentTiles items={form.attachments} onRemove={removeFile} /></div>
                     )}
-                    <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+                    {form.attachments.length < MAX_EXPENSE_ATTACHMENTS && (
+                        <AttachmentDrop onFiles={addFiles} uploading={uploading} compact={form.attachments.length > 0} />
+                    )}
                 </div>
 
-                {editing && expense?.receiptUrl && !form.receiptUrl && (
-                    <p className="flex items-center gap-1.5 text-xs text-amber-700 sm:col-span-2">
-                        <LuImage size={13} /> The receipt will be removed when you save.
-                    </p>
-                )}
                 <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
             </form>
         </Modal>
