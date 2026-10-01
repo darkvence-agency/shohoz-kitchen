@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Request } from 'express';
 import config from '../config';
+import AppError from './AppError';
 
 // ── Where uploaded files live ───────────────────────────────────────────────
 // Images are stored on the server's own disk and served back from /uploads.
@@ -74,6 +75,7 @@ export const uploadDocuments = multer({
     limits: { fileSize: 10 * 1024 * 1024, files: 10 }, // 10MB each, 10 at a time
     fileFilter: (_req, file, cb) => {
         if (DOCUMENT_TYPES[file.mimetype]) cb(null, true);
-        else cb(new Error('Attach a photo (JPG, PNG, WebP), a PDF, or a Word or Excel file'));
+        // An AppError so the reply is a 400 the dashboard can show, not a 500.
+        else cb(new AppError(400, 'Attach a photo (JPG, PNG, WebP), a PDF, or a Word or Excel file'));
     },
 });

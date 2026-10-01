@@ -127,8 +127,14 @@ export default function StaffPage() {
         try {
             // Register as a user, then promote through the superadmin roles endpoint.
             // Registering sets no cookie, so the super admin stays signed in as themselves.
-            const { role: newRole, ...account } = form;
-            const res = await registerUser({ ...account, email: account.email.trim() }).unwrap();
+            const { role: newRole, phone, ...account } = form;
+            // Phone is optional here, but the register endpoint rejects an empty one —
+            // so it is left out altogether rather than sent blank.
+            const res = await registerUser({
+                ...account,
+                email: account.email.trim(),
+                ...(phone.trim() ? { phone: phone.trim() } : {}),
+            }).unwrap();
             const newUserId = res?.data?.user?._id;
             if (newUserId) await updateUserRole({ userId: newUserId, role: newRole, permissions: [] }).unwrap();
             toast.success(`${ROLE_LABEL[newRole]} account created`);

@@ -57,25 +57,29 @@ const UserService = {
     // Admin stats
     async getAdminStats() {
         const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        // Deleted accounts are soft-deleted and drop out of every list (the model's find
+        // hooks hide them), but countDocuments and aggregate skip those hooks — so each
+        // count names the filter itself, or a deleted staff member keeps being counted.
+        const live = { isDeleted: { $ne: true } };
         const [total, active, blocked, admins, customers, activeCustomers, blockedCustomers, newCustomersThisMonth] =
             await Promise.all([
-                User.countDocuments(),
-                User.countDocuments({ status: 'active' }),
-                User.countDocuments({ status: 'blocked' }),
-                User.countDocuments({ role: { $in: ['superadmin', 'admin', 'editor'] } }),   // all staff
-                User.countDocuments({ role: 'user' }),
-                User.countDocuments({ role: 'user', status: 'active' }),
-                User.countDocuments({ role: 'user', status: 'blocked' }),
-                User.countDocuments({ role: 'user', createdAt: { $gte: monthStart } }),
+                User.countDocuments(live),
+                User.countDocuments({ ...live, status: 'active' }),
+                User.countDocuments({ ...live, status: 'blocked' }),
+                User.countDocuments({ ...live, role: { $in: ['superadmin', 'admin', 'editor'] } }),   // all staff
+                User.countDocuments({ ...live, role: 'user' }),
+                User.countDocuments({ ...live, role: 'user', status: 'active' }),
+                User.countDocuments({ ...live, role: 'user', status: 'blocked' }),
+                User.countDocuments({ ...live, role: 'user', createdAt: { $gte: monthStart } }),
             ]);
 
         const [newUsersThisMonth, staffByRole, staffBlocked] = await Promise.all([
-            User.countDocuments({ createdAt: { $gte: monthStart } }),
+            User.countDocuments({ ...live, createdAt: { $gte: monthStart } }),
             User.aggregate([
-                { $match: { role: { $in: ['superadmin', 'admin', 'editor'] } } },
+                { $match: { ...live, role: { $in: ['superadmin', 'admin', 'editor'] } } },
                 { $group: { _id: '$role', n: { $sum: 1 } } },
             ]),
-            User.countDocuments({ role: { $in: ['superadmin', 'admin', 'editor'] }, status: 'blocked' }),
+            User.countDocuments({ ...live, role: { $in: ['superadmin', 'admin', 'editor'] }, status: 'blocked' }),
         ]);
         const roleCount = (r: string) => staffByRole.find((s: { _id: string }) => s._id === r)?.n || 0;
 

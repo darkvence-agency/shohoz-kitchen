@@ -1,5 +1,6 @@
 import { ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
+import { MulterError } from 'multer';
 import config from '../config';
 import AppError from '../utils/AppError';
 
@@ -45,6 +46,13 @@ const globalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
     } else if (err instanceof AppError) {
         statusCode = err.statusCode; message = err.message;
         errorMessages = [{ path: '', message: err.message }];
+    } else if (err instanceof MulterError) {
+        // A file the sender got wrong (too big, too many) is a 400, not a server fault.
+        statusCode = 400;
+        message = err.code === 'LIMIT_FILE_SIZE' ? 'Each file must be 10 MB or smaller'
+            : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE' ? 'Too many files — send at most 10 at a time'
+            : err.message;
+        errorMessages = [{ path: err.field || '', message }];
     } else if (err.name === 'CastError') {
         const e = handleCastError(err);
         statusCode = e.statusCode; message = e.message; errorMessages = e.errorMessages;
