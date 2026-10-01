@@ -6,7 +6,7 @@ import NotificationBell from '@/components/notifications/NotificationBell';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppSelector, useAppDispatch } from '@/redux/hooks';
 import { logout } from '@/redux/slices/authSlice';
-import { LogoMark } from '@/components/shared/Logo';
+import { SiteMark } from '@/components/shared/SiteLogo';
 import {
     FiUser, FiMapPin, FiCreditCard, FiSettings,
     FiShoppingBag, FiRefreshCw, FiSlash, FiFileText,
@@ -169,7 +169,7 @@ const UserLayout = ({ children }: { children: React.ReactNode }) => {
             }} className="user-sidebar">
                 {/* Brand */}
                 <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none', padding: '18px 20px 14px', borderBottom: '1px solid #F2F2F2' }}>
-                    <LogoMark size={36} />
+                    <SiteMark size={36} />
                     <p style={{ fontSize: '12px', color: '#9aa3af', margin: 0, fontWeight: 700, letterSpacing: '0.6px', textTransform: 'uppercase' }}>My Account</p>
                 </Link>
 

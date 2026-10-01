@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAppSelector, useAppDispatch } from '@/redux';
 import { logout } from '@/redux/slices/authSlice';
-import Logo from '@/components/shared/Logo';
+import { SiteLogo } from '@/components/shared/SiteLogo';
 import { FiMapPin, FiMail, FiPhone, FiGlobe } from 'react-icons/fi';
 import { FaFacebookF, FaLinkedinIn, FaYoutube, FaInstagram, FaWhatsapp } from 'react-icons/fa';
 import { FaXTwitter, FaTiktok } from 'react-icons/fa6';
@@ -104,7 +104,7 @@ const NewFooter: React.FC = () => {
                     {/* Brand + Address + Social */}
                     <div className="sm:col-span-2 lg:col-span-1">
                         <Link href="/" className="inline-flex items-center mb-5 group select-none" aria-label="Shohoz Kitchen">
-                            <Logo size={66} />
+                            <SiteLogo size={66} />
                         </Link>
                         <div className="space-y-2.5">
                             {corporateOffice && (

@@ -18,6 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const content = await getSiteContent();
   const seo = content?.seo || {};
   const ids = cleanMarketingIds(content?.marketing);
+  const favicon = String(content?.theme?.faviconUrl || "").trim() || "/logo-mark.svg";
 
   const title = String(seo.title || "").trim() || DEFAULT_TITLE;
   const description = String(seo.description || "").trim() || DEFAULT_DESCRIPTION;
@@ -33,11 +34,8 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     keywords: keywords.length ? keywords : DEFAULT_KEYWORDS,
     applicationName: "Shohoz Kitchen",
-    icons: {
-      icon: "/logo-mark.svg",
-      shortcut: "/logo-mark.svg",
-      apple: "/logo-mark.svg",
-    },
+    // The browser-tab icon from Settings → Store, else the built-in mark.
+    icons: { icon: favicon, shortcut: favicon, apple: favicon },
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",

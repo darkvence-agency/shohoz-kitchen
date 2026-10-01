@@ -121,6 +121,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         });
     }, [res]);
 
+    /* The browser-tab icon. The server puts the saved one in the page's <head>, but
+       that page can be up to a minute old, and a tab that is already open never
+       reloads it — so point the icon links at the current one here too. */
+    const favicon = themeData.faviconUrl;
+    useEffect(() => {
+        if (!favicon) return;
+        const links = document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"], link[rel="apple-touch-icon"]');
+        if (links.length) {
+            links.forEach((l) => { if (l.getAttribute('href') !== favicon) l.href = favicon; });
+        } else {
+            const l = document.createElement('link');
+            l.rel = 'icon';
+            l.href = favicon;
+            document.head.appendChild(l);
+        }
+    }, [favicon]);
+
     return (
         <ThemeContext.Provider value={themeData}>
             {children}

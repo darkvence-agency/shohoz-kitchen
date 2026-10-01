@@ -15,7 +15,7 @@ import {
     LuPanelLeft, LuChevronRight, LuLogOut, LuX,
 } from 'react-icons/lu';
 import NotificationBell from '@/components/notifications/NotificationBell';
-import Logo from '@/components/shared/Logo';
+import { SiteMark } from '@/components/shared/SiteLogo';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 import { logout } from '@/redux/slices/authSlice';
@@ -173,7 +173,7 @@ function Sidebar({ pathname, role, onClose, onLogout }: {
             {/* Brand */}
             <div className="flex h-16 shrink-0 items-center justify-between px-4">
                 <Link href={homeFor(role)} className="flex items-center gap-2.5">
-                    <Logo iconOnly size={34} />
+                    <SiteMark size={34} />
                     <span className="leading-tight">
                         <span className="block text-[15px] font-semibold text-gray-900">Shohoz Kitchen</span>
                         <span className="block text-xs text-gray-500">Admin Dashboard</span>
