@@ -260,9 +260,19 @@ const NewFooter: React.FC = () => {
                         <p className="text-xs text-gray-400">
                             {siteRes?.data?.footer?.copyright || `© 2019-${new Date().getFullYear()} ${siteRes?.data?.footer?.companyName || 'Shohoz Kitchen'}. All Rights Reserved.`}
                         </p>
-                        {/* Who built the site. No website or social link yet — add one here when there is one. */}
-                        <span className="text-xs text-gray-400">
+                        {/* Who built the site, with their Facebook page. */}
+                        <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
                             Developed by <span className="font-semibold text-gray-500">Darkvence Agency</span>
+                            <a
+                                href="https://www.facebook.com/darkvenceagency"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Darkvence Agency on Facebook"
+                                title="Darkvence Agency on Facebook"
+                                className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-[#1877F2] hover:text-white"
+                            >
+                                <FaFacebookF size={10} />
+                            </a>
                         </span>
                     </div>
                 </div>
