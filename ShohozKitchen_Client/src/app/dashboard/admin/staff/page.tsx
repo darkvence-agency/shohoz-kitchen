@@ -10,8 +10,8 @@
  * different actions, and mixing them made both harder to read.
  */
 import React, { useEffect, useState } from 'react';
-import { LuEye, LuBan, LuCircleCheck, LuUserPlus, LuUsers } from 'react-icons/lu';
-import { useGetAdminUsersQuery, useGetAdminUserStatsQuery, useUpdateUserMutation } from '@/redux/api/userApi';
+import { LuEye, LuBan, LuCircleCheck, LuTrash2, LuUserPlus, LuUsers } from 'react-icons/lu';
+import { useDeleteUserMutation, useGetAdminUsersQuery, useGetAdminUserStatsQuery, useUpdateUserMutation } from '@/redux/api/userApi';
 import { useUpdateUserRoleMutation } from '@/redux/api/roleApi';
 import { useRegisterMutation } from '@/redux/api/authApi';
 import { ROLE_HINT, ROLE_LABEL } from '@/components/admin/access';
@@ -39,7 +39,7 @@ function useDebounced<T>(value: T, ms = 300) {
 const errMsg = (err: any, fallback: string) =>
     err?.data?.errorMessages?.[0]?.message || err?.data?.message || fallback;
 
-const EMPTY_STAFF = { firstName: '', lastName: '', email: '', phone: '', password: '', role: 'editor' as 'admin' | 'editor' };
+const EMPTY_STAFF = { firstName: '', lastName: '', email: '', phone: '', password: '', role: 'editor' as 'superadmin' | 'admin' | 'editor' };
 
 export default function StaffPage() {
     const [role, setRole] = useState<RoleFilter>('staff');
@@ -60,6 +60,7 @@ export default function StaffPage() {
     const { data: statsData } = useGetAdminUserStatsQuery(undefined);
     const [updateUser] = useUpdateUserMutation();
     const [updateUserRole] = useUpdateUserRoleMutation();
+    const [deleteUser] = useDeleteUserMutation();
     const [registerUser, { isLoading: isCreating }] = useRegisterMutation();
 
     const rows: any[] = usersData?.data || [];
@@ -72,7 +73,9 @@ export default function StaffPage() {
     /* ─── Change role ─── */
     const handleRoleChange = async (u: any, next: string) => {
         if (next === u.role) return;
-        const warn = next === 'user' ? ' They will lose access to the dashboard.' : '';
+        const warn = next === 'user' ? ' They will lose access to the dashboard.'
+            : next === 'superadmin' ? ' They will be able to do everything, including adding and deleting other super admins.'
+            : u.role === 'superadmin' ? ' They lose super admin access straight away.' : '';
         if (!window.confirm(`Change ${u.firstName}'s role to ${ROLE_LABEL[next] || next}?${warn}`)) return;
         try {
             await updateUserRole({ userId: u._id, role: next, permissions: [] }).unwrap();
@@ -94,6 +97,23 @@ export default function StaffPage() {
             toast.success(next === 'blocked' ? 'Blocked' : 'Unblocked');
         } catch (err: any) {
             toast.error(errMsg(err, 'Failed to update status'));
+        }
+    };
+
+    /* ─── Delete ─── */
+    // Anyone but yourself — a super admin included. The server refuses to delete the
+    // last super admin, and a deleted account is signed out on its next request.
+    const canDelete = (u: any) => u._id !== currentUser?.id;
+
+    const handleDelete = async (u: any) => {
+        const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email;
+        const what = u.role === 'superadmin' ? 'super admin ' : '';
+        if (!window.confirm(`Delete ${what}${name}? They are signed out at once and can no longer log in. This cannot be undone from the dashboard.`)) return;
+        try {
+            await deleteUser(u._id).unwrap();
+            toast.success(`${name} deleted`);
+        } catch (err: any) {
+            toast.error(errMsg(err, 'Failed to delete the account'));
         }
     };
 
@@ -182,14 +202,16 @@ export default function StaffPage() {
                                         <p className="mt-0.5 text-xs text-gray-400">{u.email}</p>
                                     </td>
                                     <td className={TD}>
-                                        {/* A super admin's role is fixed here, including your own. */}
-                                        {u.role !== 'superadmin' && !isMe ? (
+                                        {/* Your own role is fixed here, so you cannot lock yourself out.
+                                            Another super admin's can change; the server refuses to
+                                            demote the last one. */}
+                                        {!isMe ? (
                                             <BadgeSelect
                                                 ariaLabel="Role"
                                                 tone="purple"
                                                 value={u.role}
                                                 onChange={(r) => handleRoleChange(u, r)}
-                                                options={[{ value: 'admin', label: 'Admin' }, { value: 'editor', label: 'Editor' }, { value: 'user', label: 'Customer' }]}
+                                                options={[{ value: 'superadmin', label: 'Super admin' }, { value: 'admin', label: 'Admin' }, { value: 'editor', label: 'Editor' }, { value: 'user', label: 'Customer' }]}
                                             />
                                         ) : <Badge tone="purple">{ROLE_LABEL[u.role] || u.role}</Badge>}
                                     </td>
@@ -201,6 +223,7 @@ export default function StaffPage() {
                                             u.status === 'blocked'
                                                 ? { label: 'Unblock', icon: <LuCircleCheck size={15} />, onClick: () => handleToggleBlock(u), hidden: !canBlock(u) }
                                                 : { label: 'Block', icon: <LuBan size={15} />, onClick: () => handleToggleBlock(u), danger: true, hidden: !canBlock(u) },
+                                            { label: 'Delete', icon: <LuTrash2 size={15} />, onClick: () => handleDelete(u), danger: true, hidden: !canDelete(u) },
                                         ]} />
                                     </td>
                                 </tr>
@@ -210,7 +233,7 @@ export default function StaffPage() {
                 </table>
             </TableCard>
 
-            {/* ═══ Add staff: admin or editor ═══ */}
+            {/* ═══ Add staff: super admin, admin or editor ═══ */}
             <Modal
                 open={addOpen}
                 onClose={() => setAddOpen(false)}
@@ -226,7 +249,7 @@ export default function StaffPage() {
                         <Segmented
                             value={form.role}
                             onChange={(r) => setForm({ ...form, role: r })}
-                            options={[{ value: 'editor', label: 'Editor' }, { value: 'admin', label: 'Admin' }]}
+                            options={[{ value: 'editor', label: 'Editor' }, { value: 'admin', label: 'Admin' }, { value: 'superadmin', label: 'Super admin' }]}
                         />
                     </Field>
                     <Field label="First name" required>

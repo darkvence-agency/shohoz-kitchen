@@ -36,15 +36,18 @@ export const authMiddleware = async (
             role: 'superadmin' | 'admin' | 'editor' | 'user';
         };
 
-        // Runs on every authenticated request, and only these two fields are read —
-        // so fetch just those, unhydrated. The full document carries the password
-        // hash, every saved address and the whole wishlist.
-        const user = await User.findById(decoded.userId).select('isDeleted status').lean();
+        // Runs on every authenticated request, and only these fields are read — so
+        // fetch just those, unhydrated. The full document carries the password hash,
+        // every saved address and the whole wishlist.
+        const user = await User.findById(decoded.userId).select('isDeleted status role').lean();
         if (!user) throw new AppError(401, 'User belonging to this token no longer exists.');
         if (user.isDeleted) throw new AppError(401, 'This user account has been deleted.');
         if (user.status === 'blocked') throw new AppError(403, 'Your account has been blocked. Contact support.');
 
-        req.user = decoded;
+        // The role is taken from the account, not the token: a token lives for a day,
+        // and a super admin demoted (or an admin dropped to customer) must lose that
+        // access now, not when their token happens to expire.
+        req.user = { ...decoded, role: user.role as typeof decoded.role };
         next();
     } catch (error) {
         next(error);
@@ -108,7 +111,12 @@ export const optionalAuth = async (
                         email: string;
                         role: 'superadmin' | 'admin' | 'editor' | 'user';
                     };
-                    req.user = decoded;
+                    // As in authMiddleware: the account's current role, not the token's.
+                    // A deleted or blocked account simply reads as a visitor here.
+                    const user = await User.findById(decoded.userId).select('isDeleted status role').lean();
+                    if (user && !user.isDeleted && user.status !== 'blocked') {
+                        req.user = { ...decoded, role: user.role as typeof decoded.role };
+                    }
                 } catch {
                     // ignore invalid token for optional auth
                 }
