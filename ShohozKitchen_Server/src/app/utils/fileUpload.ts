@@ -1,6 +1,5 @@
 import multer from 'multer';
 import fs from 'fs';
-import path from 'path';
 import { Request } from 'express';
 import config from '../config';
 
@@ -15,28 +14,43 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// ── Disk storage — writes files into uploadsDir with a unique name ──────────
-const diskStorage = multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadsDir),
-    filename: (_req, file, cb) => {
-        const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
-        cb(null, `product_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`);
-    },
-});
+// ── Images: product photos, avatars, chat and return photos ────────────────
+// The extension comes from the checked type, never from the sender's file name:
+// a "photo.html" sent as image/png would otherwise be served back as a web page.
+const IMAGE_TYPES: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/gif': '.gif',
+    'image/avif': '.avif',
+};
 
-// ── Multer upload — up to 10 files, 10MB each ────────────────────────────────
-export const upload = multer({
-    storage: diskStorage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-    fileFilter: (_req, file, cb) => {
-        const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml'];
-        if (allowed.includes(file.mimetype)) {
-            cb(null, true);
-        } else {
-            cb(new Error('Only image files are allowed (jpg, png, webp, gif, avif, svg)'));
-        }
-    },
-});
+// SVG can carry script, and /uploads is served from the API's own origin. Only the
+// staff routes take it, for the store logo and favicon (Settings → Store).
+const STAFF_IMAGE_TYPES: Record<string, string> = { ...IMAGE_TYPES, 'image/svg+xml': '.svg' };
+
+// Up to 10 files per request (each route sets its own cap), 10MB each.
+const imageUpload = (types: Record<string, string>, message: string) =>
+    multer({
+        storage: multer.diskStorage({
+            destination: (_req, _file, cb) => cb(null, uploadsDir),
+            filename: (_req, file, cb) => {
+                cb(null, `product_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${types[file.mimetype]}`);
+            },
+        }),
+        limits: { fileSize: 10 * 1024 * 1024, files: 10 }, // 10MB
+        fileFilter: (_req, file, cb) => {
+            if (types[file.mimetype]) cb(null, true);
+            else cb(new Error(message));
+        },
+    });
+
+// Any signed-in user: avatars, chat photos, return photos.
+export const upload = imageUpload(IMAGE_TYPES, 'Only image files are allowed (jpg, png, webp, gif, avif)');
+
+// Staff only: product, category and site images, and the store logo and favicon.
+export const uploadStaffImages = imageUpload(STAFF_IMAGE_TYPES, 'Only image files are allowed (jpg, png, webp, gif, avif, svg)');
 
 // ── Resolve the public URL for an uploaded file ──────────────────────────────
 // Files are served by the /uploads static route, so the URL is just this API's
@@ -49,7 +63,7 @@ export function fileToUrl(req: Request, file: Express.Multer.File): string {
 // ── Documents: receipts, bills and papers filed by staff ────────────────────
 // Photos plus PDF, Word and Excel. SVG and HTML are left out on purpose: the
 // /uploads folder is served from the API's own origin, and either could carry
-// script. Only staff reach this (see upload.routes.ts), unlike the image route.
+// script. Only admins reach this (see upload.routes.ts).
 export const DOCUMENT_TYPES: Record<string, string> = {
     'image/jpeg': '.jpg',
     'image/png': '.png',

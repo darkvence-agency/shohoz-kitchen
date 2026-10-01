@@ -109,7 +109,20 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 // ── Uploaded images (stored on the VPS disk) ─────────────────────
 // Serves files written by the upload routes; cached for a year (filenames are unique).
-app.use('/uploads', express.static(uploadsDir, { maxAge: '1y', immutable: true }));
+// The folder sits on the API's own origin, so nothing in it may run script when
+// opened directly: an SVG logo, or a file stored under its sender's name before
+// extensions were taken from the checked type. PDFs are left out of the sandbox
+// because Chrome refuses to show a sandboxed PDF; its viewer runs apart anyway.
+app.use('/uploads', express.static(uploadsDir, {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders: (res, filePath) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        if (!filePath.toLowerCase().endsWith('.pdf')) {
+            res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox");
+        }
+    },
+}));
 
 // ── API Routes ───────────────────────────────────────────────────
 app.use('/api/auth', AuthRoutes);
