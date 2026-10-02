@@ -807,8 +807,8 @@ export default function OrderDetailsPage() {
                         </div>
                     </div>
 
-                    {/* Courier — Steadfast, one block per shipment (not for editors) */}
-                    {!isEditor && (packages.length > 0 || legacyTracking) && (
+                    {/* Courier — Steadfast, one block per shipment */}
+                    {(packages.length > 0 || legacyTracking) && (
                         <div className="bg-white rounded-md border border-gray-200 shadow-sm p-6">
                             <div className="flex items-center gap-2 mb-1 text-gray-800">
                                 <FiTruck className="text-[var(--color-primary)]" size={20} />
@@ -921,7 +921,7 @@ export default function OrderDetailsPage() {
                 <EditOrderModal order={order} onClose={() => setIsEditing(false)} />
             )}
 
-            {!isEditor && sendPkg && (
+            {sendPkg && (
                 <SendToSteadfastModal
                     order={order}
                     pkg={sendPkg}

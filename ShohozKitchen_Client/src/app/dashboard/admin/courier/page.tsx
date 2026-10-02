@@ -12,6 +12,8 @@
  */
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
 import { toast } from 'react-hot-toast';
 import {
     LuTruck, LuRefreshCw, LuPackage, LuExternalLink, LuTriangleAlert, LuX, LuPhone, LuUndo2, LuWallet,
@@ -82,7 +84,9 @@ export default function CourierPage() {
     const setup = countsData?.data?.setup;
     const connected = setup?.configured ?? true;   // assume yes until we know, so nothing flashes
 
-    const { data: balanceData } = useGetCourierBalanceQuery(undefined, { skip: !setup?.configured });
+    // The Steadfast balance is shop money: admins only (editors work this board too).
+    const isEditor = useSelector((s: RootState) => s.auth.user?.role) === 'editor';
+    const { data: balanceData } = useGetCourierBalanceQuery(undefined, { skip: !setup?.configured || isEditor });
     const balance = balanceData?.data?.current_balance;
 
     const [syncAll, { isLoading: syncingAll }] = useSyncActiveCourierMutation();
