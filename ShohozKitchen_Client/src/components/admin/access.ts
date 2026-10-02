@@ -5,8 +5,9 @@
 //   admin      — everything except money and dealers (Accounts, Investors, Courier
 //                payouts, Suppliers, Purchases), Staff and Roles; cannot delete users.
 //                Expenses is the one money page admins do open.
-//   editor     — the order desk and the catalogue: confirm / update orders, print
-//                labels and invoices, add and update products, fraud check.
+//   editor     — the order desk and the catalogue: take orders by phone, confirm /
+//                update and correct orders, print labels and invoices, add and update
+//                products (never delete), fraud check. Not: marking payments received.
 
 export type StaffRole = 'superadmin' | 'admin' | 'editor';
 
@@ -23,7 +24,7 @@ export const ROLE_LABEL: Record<string, string> = {
 export const ROLE_HINT: Record<StaffRole, string> = {
     superadmin: 'Everything, including money, dealers, roles, adding super admins and deleting users.',
     admin: 'Runs the shop, including Expenses. No other money or dealer pages, no roles, cannot delete users.',
-    editor: 'Order desk and catalogue: confirms orders, prints labels and invoices, adds and updates products.',
+    editor: 'Order desk and catalogue: takes and confirms orders, prints labels and invoices, adds and updates products.',
 };
 
 /** What each role can do, as a short list for the Roles page. */
@@ -44,7 +45,8 @@ export const ROLE_ACCESS: Record<StaffRole, string[]> = {
     ],
     editor: [
         'Own dashboard: orders waiting, and their own confirmations and rank',
-        'Orders: open, confirm and update status, add notes, print labels and invoices',
+        'Orders: take new orders by phone, open, confirm and update status, correct them, add notes, print labels and invoices',
+        'Cannot mark a payment received — an admin does that',
         'Products: add and update (cannot delete)',
         'Fraud check',
         'Nothing else — no shop money, customers or settings',
@@ -59,8 +61,8 @@ const SUPERADMIN_ONLY = ['/accounts', '/investors', '/courier-payouts', '/suppli
  * which shows editors their own page (EditorDashboard) and matches only exactly.
  */
 const EDITOR_PAGES = ['/', '/orders', '/products', '/fraud-check', '/profile', '/notifications'];
-/** …except these, inside the editor pages: creating orders, bulk moderation. */
-const EDITOR_BLOCKED = ['/orders/new', '/products/moderation'];
+/** …except these, inside the editor pages: bulk moderation. */
+const EDITOR_BLOCKED = ['/products/moderation'];
 
 /** Works in the admin panel (as opposed to a shopper). */
 export const isStaffRole = (role?: string): boolean => role === 'superadmin' || role === 'admin' || role === 'editor';

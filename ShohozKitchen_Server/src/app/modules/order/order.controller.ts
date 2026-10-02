@@ -105,6 +105,11 @@ const OrderController = {
     // `warnings` says what still needs doing, and the message repeats it.
     createByAdmin: catchAsync(async (req: Request, res: Response) => {
         const payload = createAdminOrderBody.parse(req.body);
+        // Editors take orders but do not mark money received — that stays with admins,
+        // as it does on the order page (PATCH /admin/:id/payment).
+        if (req.user?.role === 'editor' && payload.paymentStatus === 'paid') {
+            throw new AppError(403, 'Only an admin can mark a payment as received. Create the order as Pending; an admin can mark it paid.');
+        }
         const { order, warnings } = await OrderService.createAdminOrder(payload, req.user!.userId);
         const plain = typeof order?.toJSON === 'function' ? order.toJSON() : order;
         const message = warnings.length

@@ -5,6 +5,12 @@ import AppError from '../../utils/AppError';
 import UserService from './user.service';
 
 const UserController = {
+    lookupCustomer: catchAsync(async (req: Request, res: Response) => {
+        const customer = await UserService.lookupCustomerByPhone(req.query.phone);
+        sendResponse(res, { statusCode: 200, success: true, message: customer ? 'Customer found' : 'No customer with that number', data: customer });
+    }),
+
+
     // GET /api/users/admin/all (admin)
     getAllUsers: catchAsync(async (req: Request, res: Response) => {
         const { users, meta } = await UserService.getAllUsers(req.query as Record<string, unknown>);

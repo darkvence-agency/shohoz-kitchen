@@ -27,6 +27,9 @@ router.post('/wishlist/:productId', authMiddleware, UserController.toggleWishlis
 
 // ── Admin Routes ────────────────────────────────────────
 router.get('/admin/all', authMiddleware, authorizeRoles('admin'), UserController.getAllUsers);
+// One customer by exact mobile number, for "New order" — editors take orders too, but
+// do not get the customer list. Registered before '/admin/:id' so it is not read as an id.
+router.get('/admin/lookup', authMiddleware, authorizeRoles('admin', 'editor'), UserController.lookupCustomer);
 router.get('/admin/stats', authMiddleware, authorizeRoles('admin'), UserController.getAdminStats);
 router.get('/admin/:id', authMiddleware, authorizeRoles('admin'), UserController.getUserById);
 router.post('/admin/customers', authMiddleware, authorizeRoles('admin'), validateRequest(createCustomerValidation), UserController.createCustomer);

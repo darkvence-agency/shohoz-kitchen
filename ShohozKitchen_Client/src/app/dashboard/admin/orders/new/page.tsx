@@ -7,7 +7,9 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { LuPackage, LuUserCheck, LuUserPlus } from 'react-icons/lu';
 import { useCreateAdminOrderMutation, type AdminOrderInput, type OrderPaymentMethod } from '@/redux/api/orderApi';
-import { useGetAdminUsersQuery } from '@/redux/api/userApi';
+import { useLookupCustomerQuery } from '@/redux/api/userApi';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/redux/store';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
 import { useValidateCouponMutation } from '@/redux/api/couponApi';
 import {
@@ -46,11 +48,10 @@ export default function NewOrderPage() {
     const [cust, setCust] = useState({ phone: '', fullName: '', email: '', address: '', area: '', city: '' });
     const phone = normalisePhone(cust.phone);
     const phoneOk = validPhone(phone);
-    const { data: lookup, isFetching: lookingUp } = useGetAdminUsersQuery(
-        { searchTerm: phone, role: 'user', limit: 5 },
-        { skip: !phoneOk },
-    );
-    const existing = phoneOk ? (lookup?.data || []).find((u: any) => normalisePhone(u.phone || '') === phone) : undefined;
+    // One exact number, one customer — editors take orders too, and they do not get the
+    // customer list, so this asks for exactly the number typed.
+    const { currentData: lookup, isFetching: lookingUp } = useLookupCustomerQuery(phone, { skip: !phoneOk });
+    const existing = phoneOk ? lookup?.data || undefined : undefined;
     // The customer's default discount (Customers → edit), applied to every line below.
     const custDiscount = existing && Number(existing.defaultDiscount) > 0 ? Math.min(100, Number(existing.defaultDiscount)) : 0;
 
@@ -196,6 +197,8 @@ export default function NewOrderPage() {
         { method: 'cod', senderNumber: '', transactionId: '', paymentTime: '' },
     );
     const [paymentStatus, setPaymentStatus] = useState<PayStatus>('pending');
+    // Editors take orders but marking money received stays with admins (the server agrees).
+    const isEditor = useSelector((s: RootState) => s.auth.user?.role) === 'editor';
     const methodMeta = PAYMENT_METHODS.find((m) => m.id === pay.method) || PAYMENT_METHODS[0];
     // The shop's own account for the chosen method, so staff can check the customer paid the right one.
     const payTo: { account: string; detail: string } | null = (() => {
@@ -474,14 +477,18 @@ export default function NewOrderPage() {
                             </>
                         )}
 
-                        <div className="mt-5">
-                            <span className="mb-1.5 block text-sm font-medium text-gray-700">Payment status</span>
-                            <Segmented<PayStatus>
-                                value={paymentStatus}
-                                onChange={setPaymentStatus}
-                                options={[{ value: 'pending', label: 'Pending' }, { value: 'paid', label: 'Paid' }]}
-                            />
-                        </div>
+                        {isEditor ? (
+                            <p className="mt-5 text-xs text-gray-500">The order starts with its payment Pending — an admin marks it paid once the money is checked.</p>
+                        ) : (
+                            <div className="mt-5">
+                                <span className="mb-1.5 block text-sm font-medium text-gray-700">Payment status</span>
+                                <Segmented<PayStatus>
+                                    value={paymentStatus}
+                                    onChange={setPaymentStatus}
+                                    options={[{ value: 'pending', label: 'Pending' }, { value: 'paid', label: 'Paid' }]}
+                                />
+                            </div>
+                        )}
                     </Card>
 
                     {/* Order */}

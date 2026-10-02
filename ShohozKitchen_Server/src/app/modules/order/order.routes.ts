@@ -22,11 +22,12 @@ router.patch('/:id/cancel', authMiddleware, OrderController.cancel);
 
 
 // ── Admin routes ─────────────────────────────────
-// Editors (order desk) may list, open, confirm / update status, add notes, print, and
-// correct an order that has not gone to the courier yet. Creating orders, payments and
-// courier tracking stay with admins. Only the create and edit routes may set line prices
-// and the delivery charge (createAdminOrderValidation / updateAdminOrderValidation).
-router.post('/admin', authMiddleware, authorizeRoles('admin'), validateRequest(createAdminOrderValidation), OrderController.createByAdmin);
+// Editors (order desk) may list, open, confirm / update status, add notes, print, take
+// an order by phone, and correct an order that has not gone to the courier yet. Marking
+// a payment received and courier tracking stay with admins. Only the create and edit
+// routes may set line prices and the delivery charge (createAdminOrderValidation /
+// updateAdminOrderValidation).
+router.post('/admin', authMiddleware, authorizeRoles('admin', 'editor'), validateRequest(createAdminOrderValidation), OrderController.createByAdmin);
 router.get('/admin/all', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getAll);
 router.get('/admin/stats', authMiddleware, authorizeRoles('admin', 'editor'), OrderController.getStats);
 // Shipping labels / invoices for up to 100 orders (rendered as HTML in the browser).

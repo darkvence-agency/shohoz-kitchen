@@ -4,6 +4,7 @@ import { Product } from '../product/product.model';
 import { Order } from '../order/order.model';
 import AppError from '../../utils/AppError';
 import QueryBuilder from '../../utils/QueryBuilder';
+import { normalizePhone, phonePattern } from '../fraud/fraud.rules';
 
 const UserService = {
     // Get all users (admin)
@@ -52,6 +53,28 @@ const UserService = {
             return { ...u.toJSON(), orderCount: f?.orderCount || 0, spent: f?.spent || 0 };
         });
         return { users: rows, meta };
+    },
+
+    /**
+     * The one customer on file for a mobile number, for the dashboard's "New order".
+     * Editors take orders but must not browse the customer list, so this answers a
+     * single exact number with just what the order form fills in — never a search.
+     * Matches however the number was saved (+880…, 880…, spaces, dashes). null when
+     * there is no customer with that number.
+     */
+    async lookupCustomerByPhone(raw: unknown) {
+        const phone = normalizePhone(raw);
+        if (!/^01\d{9}$/.test(phone)) throw new AppError(400, 'Enter an 11-digit mobile number (01XXXXXXXXX)');
+
+        const fields = 'firstName lastName email phone status defaultDiscount shippingAddresses';
+        const exact = await User.findOne({ role: 'user', phone: { $in: [phone, `+88${phone}`, `88${phone}`] } }).select(fields).lean();
+        const user: any = exact || (await User.find({ role: 'user', phone: { $regex: phonePattern(phone) } }).select(fields).limit(10).lean())
+            .find((u: any) => normalizePhone(u.phone) === phone);
+        if (!user) return null;
+
+        // Same rule as the Customers list: every order except cancelled ones.
+        const orderCount = await Order.countDocuments({ user: user._id, status: { $ne: 'cancelled' } });
+        return { ...user, orderCount };
     },
 
     // Admin stats

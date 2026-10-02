@@ -260,7 +260,7 @@ function OrdersPageInner() {
                 subtitle="Customer sales orders - from the store and taken by phone."
                 actions={<>
                     <Btn icon={<LuDownload size={15} />} onClick={() => exportOrdersCsv(orders, 'orders')}>Export</Btn>
-                    {!isEditor && <Btn variant="primary" icon={<LuPlus size={16} />} href="/dashboard/admin/orders/new">New order</Btn>}
+                    <Btn variant="primary" icon={<LuPlus size={16} />} href="/dashboard/admin/orders/new">New order</Btn>
                 </>}
             />
 

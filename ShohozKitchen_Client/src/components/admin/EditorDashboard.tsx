@@ -9,10 +9,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSelector } from 'react-redux';
-import { LuClock, LuPackageCheck, LuTruck, LuCircleCheck, LuWallet, LuCircleX, LuTrophy } from 'react-icons/lu';
+import { LuClock, LuPackageCheck, LuTruck, LuCircleCheck, LuWallet, LuCircleX, LuTrophy, LuPlus } from 'react-icons/lu';
 import { RootState } from '@/redux/store';
 import { useGetMyActivityQuery } from '@/redux/api/analyticsApi';
-import { PageHeader, Segmented, StatTile, Card, Badge, taka, cx } from '@/components/admin/ui';
+import { PageHeader, Segmented, StatTile, Card, Badge, Btn, taka, cx } from '@/components/admin/ui';
 import { dhakaToday, fmtPeriod } from '@/app/dashboard/admin/analytics/_components/period';
 
 type Preset = 'today' | 'month' | 'year';
@@ -67,13 +67,14 @@ export default function EditorDashboard() {
             <PageHeader
                 title={`Hi, ${user?.name?.split(' ')[0] || 'there'}`}
                 subtitle={`Your work on the order desk — ${fmtPeriod(range.from, range.to)}`}
-                actions={
+                actions={<>
                     <Segmented
                         value={preset}
                         onChange={(v) => setPreset(v as Preset)}
                         options={[{ value: 'today', label: 'Today' }, { value: 'month', label: 'This month' }, { value: 'year', label: 'This year' }]}
                     />
-                }
+                    <Btn variant="primary" href="/dashboard/admin/orders/new" icon={<LuPlus size={15} />}>New order</Btn>
+                </>}
             />
 
             {/* ── What is waiting right now (shop-wide) ── */}
