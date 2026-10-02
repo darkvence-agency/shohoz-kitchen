@@ -43,7 +43,8 @@ const imageUpload = (types: Record<string, string>, message: string) =>
         limits: { fileSize: 10 * 1024 * 1024, files: 10 }, // 10MB
         fileFilter: (_req, file, cb) => {
             if (types[file.mimetype]) cb(null, true);
-            else cb(new Error(message));
+            // An AppError so a wrong file type is a 400 the dashboard can show, not a 500.
+            else cb(new AppError(400, message));
         },
     });
 
