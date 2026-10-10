@@ -73,10 +73,9 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
         refetchOnMountOrArgChange: true,
     });
     const { data: categoriesData } = useGetCategoriesQuery({});
-    // The site-wide delivery charges — what a product with no charge of its own costs.
+    // The site-wide flat delivery charge — what a product with no charge of its own costs.
     const { data: shipSettings } = useGetShippingSettingsQuery();
     const defaultInsideRate = shipSettings?.defaultInsideDhakaRate ?? 60;
-    const defaultOutsideRate = shipSettings?.defaultOutsideDhakaRate ?? 120;
 
     const [isDataLoaded, setIsDataLoaded] = useState(!isEditing);
 
@@ -1224,14 +1223,10 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                             </label>
                             {!formData.shippingConfig.freeShipping && (
                                 <>
-                                    <div className="grid grid-cols-3 gap-3 pt-1">
+                                    <div className="grid grid-cols-2 gap-3 pt-1">
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400">Inside Dhaka (৳)</label>
+                                            <label className="text-[10px] font-bold text-gray-400">Delivery Charge (৳)</label>
                                             <input type="number" name="shippingConfig.insideDhakaCost" placeholder={String(defaultInsideRate)} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.insideDhakaCost} onChange={handleChange} />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-gray-400">Outside Dhaka (৳)</label>
-                                            <input type="number" name="shippingConfig.outsideDhakaCost" placeholder={String(defaultOutsideRate)} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-sm outline-none focus:border-emerald-300" value={formData.shippingConfig.outsideDhakaCost} onChange={handleChange} />
                                         </div>
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-gray-400">Est. Days</label>
@@ -1239,8 +1234,7 @@ const ProductFormInner = ({ productId: propProductId }: { productId?: string }) 
                                         </div>
                                     </div>
                                     <p className="text-[11px] text-gray-500">
-                                        This product&apos;s delivery charge. Leave a box empty to use the default
-                                        (Inside ৳{defaultInsideRate} · Outside ৳{defaultOutsideRate}) from Settings → Business.
+                                        Leave the charge empty to use the flat delivery charge (৳{defaultInsideRate}) from Settings → Business.
                                         In a mixed cart the dearest product&apos;s charge applies to the whole order.
                                     </p>
                                 </>

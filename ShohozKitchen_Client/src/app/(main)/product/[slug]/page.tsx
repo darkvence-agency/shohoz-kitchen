@@ -14,7 +14,7 @@ import {
     FiStar, FiX, FiZoomIn, FiCopy, FiShare2, FiDownload,
     FiChevronUp, FiChevronDown, FiMessageSquare,
     FiEye, FiChevronRight, FiChevronLeft, FiSend,
-    FiMapPin, FiTruck, FiDollarSign, FiRefreshCw, FiShield, FiClock
+    FiTruck, FiDollarSign, FiRefreshCw, FiShield, FiClock
 } from 'react-icons/fi';
 import { useGetProductBySlugQuery, useGetRelatedProductsQuery, useIncrementProductStatMutation } from '@/redux/api/productApi';
 import { trackViewItem } from '@/lib/marketing';
@@ -131,7 +131,6 @@ export default function ProductDetailsPage() {
     // or — when it has none — the site-wide rate from Admin → Settings → Business.
     const { data: shipSettings } = useGetShippingSettingsQuery();
     const insideCharge = Number(product?.shippingConfig?.insideDhakaCost) || (shipSettings?.defaultInsideDhakaRate ?? 60);
-    const outsideCharge = Number(product?.shippingConfig?.outsideDhakaCost) || (shipSettings?.defaultOutsideDhakaRate ?? 120);
     const { data: reviewsData } = useGetProductReviewsQuery({ productId: product?._id }, { skip: !product?._id });
     const reviews = reviewsData?.data || [];
     // const [publicCreateReview] = usePublicCreateReviewMutation();
@@ -686,16 +685,7 @@ export default function ProductDetailsPage() {
                                         {product.shippingConfig?.freeShipping ? (
                                             <p style={{ fontSize: '12px', fontWeight: 600, color: '#16a34a', margin: 0, lineHeight: 1.6 }}>Free delivery on this item</p>
                                         ) : (
-                                            <>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Inside Dhaka</span>
-                                                    <strong style={{ color: '#111' }}>৳{insideCharge}</strong>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#444', lineHeight: 1.6 }}>
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><FiMapPin size={11} style={{ color: '#9ca3af' }} /> Outside Dhaka</span>
-                                                    <strong style={{ color: '#111' }}>৳{outsideCharge}</strong>
-                                                </div>
-                                            </>
+                                            <p style={{ fontSize: '15px', fontWeight: 700, color: '#111', margin: 0 }}>৳{insideCharge}</p>
                                         )}
                                         <p style={{ fontSize: '11px', color: '#9ca3af', margin: '3px 0 0' }}>
                                             Delivery in {shipSettings?.defaultEstimatedDays || '3-5 days'}

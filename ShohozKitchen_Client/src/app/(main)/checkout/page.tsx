@@ -7,11 +7,10 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/redux';
 import { removeFromCart, increaseQuantity, decreaseQuantity } from '@/redux/slices/cartSlice';
-import { loginSuccess } from '@/redux/slices/authSlice';
 import { useCreateOrderMutation, useGuestCheckoutMutation } from '@/redux/api/orderApi';
 import { useInitPaymentMutation } from '@/redux/api/paymentApi';
 import { useGetSiteContentQuery } from '@/redux/api/siteContentApi';
-import { useGetShippingQuoteQuery, useGetShippingSettingsQuery, type DeliveryArea } from '@/redux/api/shippingApi';
+import { useGetShippingQuoteQuery, useGetShippingSettingsQuery } from '@/redux/api/shippingApi';
 import { useGetMyAddressesQuery, useAddAddressMutation } from '@/redux/api/userApi';
 import {
     FiChevronLeft, FiInfo, FiCheck, FiCopy, FiLock, FiTag, FiCreditCard, FiTruck,
@@ -26,41 +25,40 @@ const COUPON_STORAGE_KEY = 'shohozkitchen_applied_coupon';
 // ─── Payment methods offered ──────────────────────────────────────────────
 // Cash on Delivery always. bKash, Nagad, Rocket and bank transfer only while the super admin
 // has them switched on with an account set (Settings → Payment methods); the customer
-// pays manually and tells us where from, the transaction ID and the time. SSLCommerz
-// is not offered for now (its gateway code stays in the payment module).
+// pays manually and tells us where from, the transaction ID and the time.
 const PAYMENT_META = [
     {
         id: 'cod',
-        label: 'Cash on Delivery',
-        sub: 'Pay in cash when your order arrives',
+        label: 'ক্যাশ অন ডেলিভারি',
+        sub: 'পণ্য হাতে পেয়ে টাকা দিন',
         color: '#16a34a',
         kind: 'cod' as const,
     },
     {
         id: 'bkash',
-        label: 'bKash',
-        sub: 'Send Money to our bKash number',
+        label: 'বিকাশ',
+        sub: 'আমাদের বিকাশ নম্বরে সেন্ড মানি করুন',
         color: '#E2136E',
         kind: 'mobile' as const,
     },
     {
         id: 'nagad',
-        label: 'Nagad',
-        sub: 'Send Money to our Nagad number',
+        label: 'নগদ',
+        sub: 'আমাদের নগদ নম্বরে সেন্ড মানি করুন',
         color: '#F47920',
         kind: 'mobile' as const,
     },
     {
         id: 'rocket',
-        label: 'Rocket',
-        sub: 'Send Money to our Rocket number',
+        label: 'রকেট',
+        sub: 'আমাদের রকেট নম্বরে সেন্ড মানি করুন',
         color: '#8C3EC0',
         kind: 'mobile' as const,
     },
     {
         id: 'bank',
-        label: 'Bank Transfer',
-        sub: 'Transfer to our bank account',
+        label: 'ব্যাংক ট্রান্সফার',
+        sub: 'আমাদের ব্যাংক অ্যাকাউন্টে পাঠান',
         color: '#0F766E',
         kind: 'bank' as const,
     },
@@ -162,57 +160,25 @@ const CheckoutPage = () => {
         return () => clearTimeout(t);
     }, [formData.city]);
 
-    // Delivery-zone dropdown → deterministic rate. If none picked, the quote falls
-    // back to city-string matching (backwards compatible).
-    // const { data: deliveryZones = [] } = useGetDeliveryZonesQuery();
-    const [selectedZoneId, ] = useState('');
-    const quoteZoneId = selectedZoneId && selectedZoneId !== 'other' ? selectedZoneId : undefined;
-
-    // const handleZoneChange = (value: string) => {
-    //     setSelectedZoneId(value);
-    //     if (value === 'other') {
-    //         setFormData((prev) => ({ ...prev, city: '' }));
-    //     } else if (value) {
-    //         const zone = deliveryZones.find((z) => z._id === value);
-    //         if (zone) setFormData((prev) => ({ ...prev, city: zone.name }));
-    //     }
-    // };
-
-    // ─── Delivery area: Inside / Outside Dhaka. The charge is the dearest item's own
-    //     delivery charge; items without one cost the Settings rate. ──
+    // ─── Delivery charge: a single flat charge from Settings (no Inside/Outside,
+    //     no zones). Free when a free-delivery rule applies (product / coupon /
+    //     threshold / quantity). ──
     const { data: shipSettings } = useGetShippingSettingsQuery();
     const cartProductIds = React.useMemo(
         () => Array.from(new Set(items.map((i: any) => i.productId || i.id).filter(Boolean))) as string[],
         [items],
     );
-    const [deliveryArea, setDeliveryArea] = useState<DeliveryArea | ''>('');
-    const [areaTouched, setAreaTouched] = useState(false);
-    // A city that says "Dhaka" pre-picks Inside Dhaka until the customer chooses themselves.
-    const suggestedArea: DeliveryArea | '' = !areaTouched && /dhaka/i.test(debouncedCity) ? 'inside_dhaka' : '';
-    const area: DeliveryArea | '' = deliveryArea || suggestedArea;
-    const pickArea = (a: DeliveryArea) => {
-        setDeliveryArea(a);
-        setAreaTouched(true);
-        if (errors.deliveryArea) setErrors((prev) => { const n = { ...prev }; delete n.deliveryArea; return n; });
-    };
 
     const { data: shippingQuote } = useGetShippingQuoteQuery(
-        { city: debouncedCity || undefined, subtotal: totalPrice, zoneId: quoteZoneId, area: area || undefined, productIds: cartProductIds },
+        { city: debouncedCity || undefined, subtotal: totalPrice, productIds: cartProductIds },
         { skip: totalPrice <= 0 },
     );
-    // Both areas' charges for this cart, so each button shows its own price.
-    const insideRate = shippingQuote?.areaRates?.inside_dhaka ?? (shipSettings?.defaultInsideDhakaRate ?? 60);
-    const outsideRate = shippingQuote?.areaRates?.outside_dhaka ?? (shipSettings?.defaultOutsideDhakaRate ?? 120);
-
-    // Charge the picked area's rate. Both rates come from the same quote and do not
-    // depend on which area is picked, so switching areas updates the total at once
-    // instead of showing the previous area's charge until the next quote lands.
-    // A free-shipping coupon zeroes delivery here too (matches the server's charge).
     const freeShipping = Boolean(appliedCoupon?.freeShipping) || (shippingQuote?.freeShipping ?? false);
-    const shippingCost = freeShipping ? 0 : (area ? (area === 'inside_dhaka' ? insideRate : outsideRate) : 0);
-    const estimatedDays = shippingQuote?.estimatedDays ?? '3-5 days';
+    const deliveryCharge = shippingQuote?.shippingCost ?? (shipSettings?.defaultInsideDhakaRate ?? 60);
+    const shippingCost = freeShipping ? 0 : deliveryCharge;
+    const estimatedDays = shippingQuote?.estimatedDays ?? '';
     const FREE_REASON_LABEL: Record<string, string> = {
-        threshold: 'Order qualifies', coupon: 'Coupon applied', product: 'Free-delivery items', quantity: 'Bulk order',
+        threshold: 'অর্ডারটি যোগ্য', coupon: 'কুপন প্রযোজ্য', product: 'ফ্রি ডেলিভারি পণ্য', quantity: 'বেশি পরিমাণে অর্ডার',
     };
     const freeReasonLabel = shippingQuote?.freeReason ? FREE_REASON_LABEL[shippingQuote.freeReason] : '';
 
@@ -276,19 +242,16 @@ const CheckoutPage = () => {
 
     const validate = () => {
         const e: Record<string, string> = {};
-        if (!formData.fullName.trim()) e.fullName = 'Full name is required';
-        if (!formData.phone.trim()) e.phone = 'Phone number is required';
-        else if (!/^01\d{9}$/.test(formData.phone.replace(/[\s-]/g, ''))) e.phone = 'Enter a valid 11-digit number';
-        if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) e.email = 'Enter a valid email';
-        if (!formData.address.trim()) e.address = 'Address is required';
-        if (!formData.city.trim()) e.city = 'City is required';
-        if (!area) e.deliveryArea = 'Choose Inside Dhaka or Outside Dhaka';
+        if (!formData.fullName.trim()) e.fullName = 'নাম লিখুন';
+        if (!formData.phone.trim()) e.phone = 'ফোন নম্বর লিখুন';
+        else if (!/^01\d{9}$/.test(formData.phone.replace(/[\s-]/g, ''))) e.phone = 'সঠিক ১১ সংখ্যার নম্বর দিন';
+        if (!formData.address.trim()) e.address = 'ঠিকানা লিখুন';
         // bKash / Nagad / Rocket / bank transfer need the payment's details so staff can check
         // it; COD is paid on delivery and needs none.
         if (MANUAL_METHODS.includes(selectedPayment)) {
-            if (!paymentDetails.senderNumber.trim()) e.senderNumber = selectedPayment === 'bank' ? 'Enter the account you paid from' : 'Sender number is required';
-            if (!paymentDetails.transactionId.trim()) e.transactionId = 'Transaction ID is required';
-            if (!paymentDetails.paymentTime.trim()) e.paymentTime = 'Payment time is required';
+            if (!paymentDetails.senderNumber.trim()) e.senderNumber = selectedPayment === 'bank' ? 'যে অ্যাকাউন্ট থেকে পাঠিয়েছেন তা লিখুন' : 'প্রেরকের নম্বর লিখুন';
+            if (!paymentDetails.transactionId.trim()) e.transactionId = 'ট্রানজেকশন আইডি লিখুন';
+            if (!paymentDetails.paymentTime.trim()) e.paymentTime = 'পেমেন্টের সময় দিন';
         }
         return e;
     };
@@ -311,7 +274,7 @@ const CheckoutPage = () => {
         const validationErrors = validate();
         if (Object.keys(validationErrors).length > 0) {
             setErrors(validationErrors);
-            toast.error('Please fix the highlighted fields');
+            toast.error('লাল দাগানো ঘরগুলো ঠিক করুন');
             const firstField = Object.keys(validationErrors)[0];
             document.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus();
             return;
@@ -336,9 +299,7 @@ const CheckoutPage = () => {
                     fullName: formData.fullName,
                     phone: formData.phone,
                     address: formData.address,
-                    area: formData.area,
                     city: formData.city,
-                    postalCode: formData.postalCode,
                     isDefault: savedAddresses.length === 0, // first address becomes the default
                 }).unwrap();
             } catch {
@@ -356,11 +317,7 @@ const CheckoutPage = () => {
             shippingAddress: {
                 fullName: formData.fullName,
                 phone: formData.phone,
-                email: formData.email,
                 address: formData.address,
-                area: formData.area,
-                city: formData.city,
-                postalCode: formData.postalCode,
             },
             paymentMethod: selectedPayment,
             // Only manual payments (bKash / Nagad / Rocket / bank) carry the payment's details.
@@ -370,8 +327,6 @@ const CheckoutPage = () => {
                 paymentTime: paymentDetails.paymentTime,
             } : {},
             shippingCost,
-            ...(area ? { deliveryArea: area } : {}),
-            ...(quoteZoneId ? { zoneId: quoteZoneId } : {}),
             ...(appliedCoupon ? { couponCode: appliedCoupon.code, discount: appliedCoupon.discount } : {}),
         };
 
@@ -380,10 +335,6 @@ const CheckoutPage = () => {
         // land on the confirmation like before; staff check the payment afterwards.
         const isGatewayMethod = selectedPayment === 'sslcommerz';
 
-        // Initialise the gateway for the freshly-created order and redirect the
-        // browser to whatever URL the backend returns (real gateway in prod, the
-        // /payment/simulate mock page in dev). Falls back to the success page if
-        // the gateway can't be reached so the order is never lost.
         const goToGateway = async (orderId: string) => {
             try {
                 const initRes = await initPayment({ orderId, method: selectedPayment }).unwrap();
@@ -392,10 +343,9 @@ const CheckoutPage = () => {
                     window.location.href = redirectUrl;
                     return;
                 }
-                // No redirect URL came back — treat as placed and let the user verify later.
                 router.push('/checkout/success');
             } catch {
-                toast.error('Order placed, but we could not start the payment. You can retry from My Orders.', { duration: 7000 });
+                toast.error('অর্ডার হয়েছে, তবে পেমেন্ট শুরু করা যায়নি। My Orders থেকে আবার চেষ্টা করুন।', { duration: 7000 });
                 router.push('/checkout/success');
             }
         };
@@ -440,20 +390,6 @@ const CheckoutPage = () => {
                 try { localStorage.removeItem('shohozkitchen_selected_cart'); } catch {}
                 localStorage.removeItem(COUPON_STORAGE_KEY);
 
-                if (result.data?.accessToken && result.data?.user) {
-                    const userData = result.data.user;
-                    dispatch(loginSuccess({
-                        user: {
-                            id: userData._id,
-                            name: `${userData.firstName} ${userData.lastName}`.trim(),
-                            email: userData.email,
-                            phone: userData.phone || '',
-                            role: userData.role || 'user',
-                        },
-                        token: result.data.accessToken,
-                    }));
-                }
-
                 if (isGatewayMethod) {
                     const orderId = result?.data?.order?._id;
                     if (orderId) {
@@ -463,7 +399,6 @@ const CheckoutPage = () => {
                 }
 
                 const ord = result?.data?.order || result?.data;
-                toast.success('Your account has been created.', { duration: 5000 });
                 setPlacedOrder({ _id: ord?._id, orderId: ord?.orderId || ord?.orderNumber });
             }
         } catch (err: any) {
@@ -475,7 +410,7 @@ const CheckoutPage = () => {
                     const target = items.find((i: any) => i.productId === missingId || i.id === missingId);
                     if (target) {
                         dispatch(removeFromCart(target.id));
-                        toast.error(`"${target.name}" is no longer available and was removed from your cart. Please try placing your order again.`, { duration: 7000 });
+                        toast.error(`"${target.name}" এখন আর নেই, কার্ট থেকে সরানো হলো। আবার অর্ডার করার চেষ্টা করুন।`, { duration: 7000 });
                         return;
                     }
                 }
@@ -483,7 +418,7 @@ const CheckoutPage = () => {
             if (errorData?.errorMessages?.length > 0) {
                 errorData.errorMessages.forEach((er: any) => toast.error(er.message, { duration: 6000 }));
             } else {
-                toast.error(errorData?.message || 'Failed to place order. Please try again.', { duration: 6000 });
+                toast.error(errorData?.message || 'অর্ডার করা যায়নি। আবার চেষ্টা করুন।', { duration: 6000 });
             }
         }
     };
@@ -513,25 +448,27 @@ const CheckoutPage = () => {
                             <FiCheck size={32} className="text-white" strokeWidth={3} />
                         </div>
                     </div>
-                    <h2 className="text-2xl font-bold text-gray-900">Order Placed!</h2>
+                    <h2 className="text-2xl font-bold text-gray-900">অর্ডার সম্পন্ন হয়েছে!</h2>
                     <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                        Thank you for your purchase. Your order has been placed successfully
-                        {orderRef && <> — <span className="font-semibold text-gray-700">{orderRef}</span></>}.
-                        {selectedPayment === 'cod' && ' Pay in cash when it arrives.'}
-                        {MANUAL_METHODS.includes(selectedPayment) && ' We will confirm it once we have checked your payment.'}
+                        আপনার অর্ডারটি সফলভাবে জমা হয়েছে
+                        {orderRef && <> — <span className="font-semibold text-gray-700">{orderRef}</span></>}।
+                        {selectedPayment === 'cod' && ' পণ্য হাতে পেয়ে টাকা দিন।'}
+                        {MANUAL_METHODS.includes(selectedPayment) && ' আপনার পেমেন্ট যাচাই করে আমরা নিশ্চিত করব।'}
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 mt-7">
-                        <button
-                            onClick={() => router.push('/dashboard/user/orders')}
-                            className="flex-1 py-3 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold hover:brightness-95 transition-all shadow-md shadow-[var(--color-primary)]/20"
-                        >
-                            Go to Dashboard
-                        </button>
+                        {isAuthenticated && (
+                            <button
+                                onClick={() => router.push('/dashboard/user/orders')}
+                                className="flex-1 py-3 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold hover:brightness-95 transition-all shadow-md shadow-[var(--color-primary)]/20"
+                            >
+                                আমার অর্ডার দেখুন
+                            </button>
+                        )}
                         <button
                             onClick={() => router.push('/')}
                             className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-all"
                         >
-                            Continue Shopping
+                            কেনাকাটা চালিয়ে যান
                         </button>
                     </div>
                 </div>
@@ -549,18 +486,18 @@ const CheckoutPage = () => {
                 {/* Back */}
                 <Link href="/cart" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-4 transition-colors">
                     <FiChevronLeft size={16} />
-                    Back to Cart
+                    কার্টে ফিরে যান
                 </Link>
 
-                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-5">Checkout</h1>
+                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-5">অর্ডার সম্পন্ন করুন</h1>
 
                 {/* Guest Banner */}
                 {!isAuthenticated && (
                     <div className="mb-5 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 flex items-start gap-3">
                         <FiInfo size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-blue-700 leading-relaxed">
-                            No account needed. We&apos;ll create one automatically — your email will be your login ID and password.{' '}
-                            <Link href="/login?redirect=/checkout" className="font-medium underline">Already have an account?</Link>
+                            অ্যাকাউন্ট ছাড়াই অর্ডার করতে পারবেন।{' '}
+                            <Link href="/login?redirect=/checkout" className="font-medium underline">আগে থেকে অ্যাকাউন্ট থাকলে লগইন করুন</Link>
                         </p>
                     </div>
                 )}
@@ -574,7 +511,7 @@ const CheckoutPage = () => {
                             {/* ── Shipping Address ── */}
                             <div className="bg-white rounded-lg border border-gray-200">
                                 <div className="px-5 py-3.5 border-b border-gray-100">
-                                    <h2 className="text-sm font-semibold text-gray-900">Shipping Address</h2>
+                                    <h2 className="text-sm font-semibold text-gray-900">ডেলিভারি ঠিকানা</h2>
                                 </div>
                                 {/* Saved addresses — auto-filled from the dashboard. Pick one or add a new one. */}
                                 {isAuthenticated && savedAddresses.length > 0 && (
@@ -594,10 +531,9 @@ const CheckoutPage = () => {
                                                     <span className="min-w-0">
                                                         <span className="block text-sm font-medium text-gray-900">
                                                             {a.fullName} <span className="text-gray-400 font-normal">· {a.phone}</span>
-                                                            {a.isDefault && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-primary)] bg-[var(--color-primary-lightest)] rounded px-1.5 py-0.5">Default</span>}
-                                                            {a.label && <span className="ml-1.5 text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{a.label}</span>}
+                                                            {a.isDefault && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-primary)] bg-[var(--color-primary-lightest)] rounded px-1.5 py-0.5">ডিফল্ট</span>}
                                                         </span>
-                                                        <span className="block text-xs text-gray-500 mt-0.5">{[a.address, a.area, a.city, a.postalCode].filter(Boolean).join(', ')}</span>
+                                                        <span className="block text-xs text-gray-500 mt-0.5">{[a.address, a.city].filter(Boolean).join(', ')}</span>
                                                     </span>
                                                 </label>
                                             );
@@ -608,9 +544,9 @@ const CheckoutPage = () => {
                                             className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${selectedAddressId === 'new' ? 'bg-[var(--color-primary-lightest)]/40 text-gray-900' : 'border-dashed border-gray-300 text-gray-500 hover:border-gray-400'}`}
                                             style={selectedAddressId === 'new' ? { borderColor: 'var(--color-primary)' } : {}}
                                         >
-                                            + Deliver to a new address
+                                            + নতুন ঠিকানায় ডেলিভারি
                                         </button>
-                                        <Link href="/dashboard/user/addresses" className="inline-block text-xs text-[var(--color-primary)] hover:underline">Manage saved addresses →</Link>
+                                        <Link href="/dashboard/user/addresses" className="inline-block text-xs text-[var(--color-primary)] hover:underline">সংরক্ষিত ঠিকানা ম্যানেজ করুন →</Link>
                                     </div>
                                 )}
 
@@ -618,58 +554,19 @@ const CheckoutPage = () => {
                                 {(!isAuthenticated || savedAddresses.length === 0 || selectedAddressId === 'new') && (
                                 <div className="px-5 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
-                                        <label className={labelClass}>Full Name <span className="text-red-500">*</span></label>
-                                        <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} placeholder="Enter your full name" className={cls('fullName')} />
+                                        <label className={labelClass}>পূর্ণ নাম <span className="text-red-500">*</span></label>
+                                        <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} placeholder="আপনার নাম লিখুন" className={cls('fullName')} />
                                         <FieldError field="fullName" />
                                     </div>
-                                    <div>
-                                        <label className={labelClass}>Email {!isAuthenticated && <span className="text-gray-400">(login ID)</span>}</label>
-                                        <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="email@example.com" className={cls('email')} />
-                                        <FieldError field="email" />
-                                    </div>
-                                    <div>
-                                        <label className={labelClass}>Phone Number <span className="text-red-500">*</span></label>
+                                    <div className="md:col-span-2">
+                                        <label className={labelClass}>ফোন নম্বর <span className="text-red-500">*</span></label>
                                         <input type="tel" name="phone" value={formData.phone} onChange={handleChange} placeholder="01XXXXXXXXX" className={cls('phone')} />
                                         <FieldError field="phone" />
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className={labelClass}>Address <span className="text-red-500">*</span></label>
-                                        <input type="text" name="address" value={formData.address} onChange={handleChange} placeholder="House no, road, area" className={cls('address')} />
+                                        <label className={labelClass}>ঠিকানা <span className="text-red-500">*</span></label>
+                                        <input type="text" name="address" value={formData.address} onChange={handleChange} placeholder="বাসা, রোড, এলাকা, থানা, জেলা" className={cls('address')} />
                                         <FieldError field="address" />
-                                    </div>
-                                    <div>
-                                        <label className={labelClass}>City / District <span className="text-red-500">*</span></label>
-                                        <input
-                                            type="text"
-                                            name="city"
-                                            value={formData.city}
-                                            onChange={handleChange}
-                                            placeholder="e.g. Dhaka, Gazipur, Chittagong..."
-                                            className={cls('city')}
-                                        />
-                                        <FieldError field="city" />
-                                    </div>
-                                    <div>
-                                        <label className={labelClass}>Area / Thana</label>
-                                        <input
-                                            type="text"
-                                            name="area"
-                                            value={formData.area}
-                                            onChange={handleChange}
-                                            placeholder="e.g. Mirpur, Dhanmondi, Gazipur Sadar..."
-                                            className={inputClass}
-                                        />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className={labelClass}>Postal Code</label>
-                                        <input
-                                            type="text"
-                                            name="postalCode"
-                                            value={formData.postalCode}
-                                            onChange={handleChange}
-                                            placeholder="e.g. 1207 / 1703"
-                                            className={inputClass}
-                                        />
                                     </div>
                                     {isAuthenticated && (
                                         <label className="md:col-span-2 flex items-center gap-2.5 mt-1 cursor-pointer select-none">
@@ -679,48 +576,18 @@ const CheckoutPage = () => {
                                                 onChange={(e) => setSaveAddress(e.target.checked)}
                                                 className="w-4 h-4 rounded border-gray-300 accent-[var(--color-primary)] cursor-pointer"
                                             />
-                                            <span className="text-xs text-gray-600">Save this address to my account for faster checkout next time</span>
+                                            <span className="text-xs text-gray-600">পরের বার দ্রুত অর্ডারের জন্য এই ঠিকানা আমার অ্যাকাউন্টে সংরক্ষণ করুন</span>
                                         </label>
                                     )}
                                 </div>
                                 )}
-
-                                    {/* Delivery area → flat charge (Admin → Settings → Business) */}
-                                    <div className="px-5 pb-5" data-field="deliveryArea">
-                                        <label className={labelClass}>Delivery Area <span className="text-red-500">*</span></label>
-                                        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Delivery area">
-                                            {([
-                                                { value: 'inside_dhaka', label: 'Inside Dhaka', rate: insideRate },
-                                                { value: 'outside_dhaka', label: 'Outside Dhaka', rate: outsideRate },
-                                            ] as const).map((opt) => {
-                                                const active = area === opt.value;
-                                                return (
-                                                    <button
-                                                        key={opt.value}
-                                                        type="button"
-                                                        role="radio"
-                                                        aria-checked={active}
-                                                        onClick={() => pickArea(opt.value)}
-                                                        className={`flex items-center justify-between gap-2 rounded-md border px-3.5 py-3 text-left transition-colors ${active ? 'border-[var(--color-primary)] bg-[var(--color-primary-lightest)]' : errors.deliveryArea ? 'border-red-300 bg-red-50/40' : 'border-gray-200 hover:border-gray-300'}`}
-                                                    >
-                                                        <span className="flex items-center gap-2">
-                                                            <span className={`inline-block h-4 w-4 rounded-full border-2 ${active ? 'border-[var(--color-primary)] bg-[var(--color-primary)] shadow-[inset_0_0_0_2px_#fff]' : 'border-gray-300'}`} />
-                                                            <span className="text-sm font-semibold text-gray-800">{opt.label}</span>
-                                                        </span>
-                                                        <span className="text-sm font-bold text-gray-900">৳{opt.rate}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                        <FieldError field="deliveryArea" />
-                                    </div>
                             </div>
 
 
                             {/* ── Payment Method ── */}
                             <div className="bg-white rounded-lg border border-gray-200">
                                 <div className="px-5 py-3.5 border-b border-gray-100">
-                                    <h2 className="text-sm font-semibold text-gray-900">Payment Method</h2>
+                                    <h2 className="text-sm font-semibold text-gray-900">পেমেন্ট পদ্ধতি</h2>
                                 </div>
                                 <div className="px-5 py-5 space-y-3">
 
@@ -776,9 +643,9 @@ const CheckoutPage = () => {
                                                 <FiTruck size={15} className="text-green-600" />
                                             </div>
                                             <div>
-                                                <p className="text-sm font-semibold text-green-800">Pay when your order arrives!</p>
+                                                <p className="text-sm font-semibold text-green-800">পণ্য হাতে পেয়ে টাকা দিন!</p>
                                                 <p className="text-xs text-green-700 mt-0.5 leading-relaxed">
-                                                    No advance payment needed. Our delivery agent will collect the full amount in cash when your order is delivered to your door.
+                                                    কোনো অগ্রিম টাকা লাগবে না। পণ্য আপনার দরজায় পৌঁছে দিলে ডেলিভারি এজেন্ট পুরো টাকা নগদে নিয়ে নেবেন।
                                                 </p>
                                             </div>
                                         </div>
@@ -790,19 +657,19 @@ const CheckoutPage = () => {
                                             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 flex items-center justify-between gap-3">
                                                 {activeMethod.kind === 'bank' ? (
                                                     <div className="min-w-0">
-                                                        <p className="text-xs text-gray-500">Transfer the total to this bank account</p>
+                                                        <p className="text-xs text-gray-500">এই ব্যাংক অ্যাকাউন্টে মোট টাকা পাঠান</p>
                                                         <p className="text-base font-semibold tracking-wide text-gray-900 mt-0.5 break-all">{bank.accountNumber}</p>
                                                         <p className="text-xs text-gray-600 mt-1 leading-relaxed">
                                                             {bank.accountName}
                                                             {bank.bankName && <> · {bank.bankName}</>}
-                                                            {bank.branch && <> · {bank.branch} branch</>}
-                                                            {bank.routingNumber && <> · Routing {bank.routingNumber}</>}
+                                                            {bank.branch && <> · {bank.branch} শাখা</>}
+                                                            {bank.routingNumber && <> · রাউটিং {bank.routingNumber}</>}
                                                         </p>
                                                     </div>
                                                 ) : (
                                                     <div>
                                                         <p className="text-xs text-gray-500">
-                                                            Send Money ({activeMethod.accountType}) to this {activeMethod.label} number
+                                                            এই {activeMethod.label} নম্বরে সেন্ড মানি ({activeMethod.accountType}) করুন
                                                         </p>
                                                         <p className="text-base font-semibold tracking-wide text-gray-900 mt-0.5">{activeMethod.number}</p>
                                                     </div>
@@ -813,7 +680,7 @@ const CheckoutPage = () => {
                                                         onClick={copyNumber}
                                                         className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border border-gray-300 bg-white text-gray-600 hover:border-gray-400 transition-colors"
                                                     >
-                                                        {copied ? <><FiCheck size={13} /> Copied</> : <><FiCopy size={13} /> Copy</>}
+                                                        {copied ? <><FiCheck size={13} /> কপি হয়েছে</> : <><FiCopy size={13} /> কপি</>}
                                                     </button>
                                                 )}
                                             </div>
@@ -827,24 +694,24 @@ const CheckoutPage = () => {
                                                 <div className="md:col-span-2">
                                                     {activeMethod.kind === 'bank' ? (
                                                         <>
-                                                            <label className={labelClass}>Paid From (your bank &amp; account number) <span className="text-red-500">*</span></label>
-                                                            <input type="text" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="e.g. City Bank, 1234567890" className={cls('senderNumber')} />
+                                                            <label className={labelClass}>যে অ্যাকাউন্ট থেকে পাঠিয়েছেন (ব্যাংক ও অ্যাকাউন্ট নম্বর) <span className="text-red-500">*</span></label>
+                                                            <input type="text" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="যেমন: City Bank, 1234567890" className={cls('senderNumber')} />
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <label className={labelClass}>Your {activeMethod.label} Number <span className="text-red-500">*</span></label>
-                                                            <input type="tel" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="Number you sent money from" className={cls('senderNumber')} />
+                                                            <label className={labelClass}>আপনার {activeMethod.label} নম্বর <span className="text-red-500">*</span></label>
+                                                            <input type="tel" name="senderNumber" value={paymentDetails.senderNumber} onChange={handlePaymentDetailChange} placeholder="যে নম্বর থেকে টাকা পাঠিয়েছেন" className={cls('senderNumber')} />
                                                         </>
                                                     )}
                                                     <FieldError field="senderNumber" />
                                                 </div>
                                                 <div>
-                                                    <label className={labelClass}>{activeMethod.kind === 'bank' ? 'Transaction / Reference ID' : 'Transaction ID'} <span className="text-red-500">*</span></label>
-                                                    <input type="text" name="transactionId" value={paymentDetails.transactionId} onChange={handlePaymentDetailChange} placeholder="e.g. 9A1B2C3D4E" className={cls('transactionId')} />
+                                                    <label className={labelClass}>{activeMethod.kind === 'bank' ? 'ট্রানজেকশন / রেফারেন্স আইডি' : 'ট্রানজেকশন আইডি'} <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="transactionId" value={paymentDetails.transactionId} onChange={handlePaymentDetailChange} placeholder="যেমন: 9A1B2C3D4E" className={cls('transactionId')} />
                                                     <FieldError field="transactionId" />
                                                 </div>
                                                 <div>
-                                                    <label className={labelClass}>Payment Time <span className="text-red-500">*</span></label>
+                                                    <label className={labelClass}>পেমেন্টের সময় <span className="text-red-500">*</span></label>
                                                     <input type="datetime-local" name="paymentTime" value={paymentDetails.paymentTime} onChange={handlePaymentDetailChange} className={cls('paymentTime')} />
                                                     <FieldError field="paymentTime" />
                                                 </div>
@@ -859,9 +726,9 @@ const CheckoutPage = () => {
                         <div className="lg:col-span-5 lg:sticky lg:top-24 h-fit">
                             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
                                 <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-                                    <h2 className="text-sm font-semibold text-gray-900">Order Summary</h2>
+                                    <h2 className="text-sm font-semibold text-gray-900">অর্ডার সারাংশ</h2>
                                     <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full font-medium">
-                                        {totalQuantity} item{totalQuantity > 1 ? 's' : ''}
+                                        {totalQuantity} টি পণ্য
                                     </span>
                                 </div>
 
@@ -880,7 +747,7 @@ const CheckoutPage = () => {
                                                         type="button"
                                                         onClick={() => dispatch(removeFromCart(item.id))}
                                                         className="text-gray-300 hover:text-red-500 transition-colors p-0.5 ml-1 flex-shrink-0"
-                                                        title="Remove product"
+                                                        title="সরান"
                                                     >
                                                         <FiTrash2 size={13} />
                                                     </button>
@@ -895,7 +762,7 @@ const CheckoutPage = () => {
                                                         )}
                                                         {item.size && (
                                                             <span className="text-[10px] text-gray-500 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5">
-                                                                Size: {item.size}
+                                                                সাইজ: {item.size}
                                                             </span>
                                                         )}
                                                     </div>
@@ -913,7 +780,7 @@ const CheckoutPage = () => {
                                                                 }
                                                             }}
                                                             className="w-6 h-6 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors"
-                                                            title={item.quantity === 1 ? 'Remove' : 'Decrease'}
+                                                            title={item.quantity === 1 ? 'সরান' : 'কমান'}
                                                         >
                                                             <FiMinus size={11} />
                                                         </button>
@@ -922,7 +789,7 @@ const CheckoutPage = () => {
                                                             type="button"
                                                             onClick={() => dispatch(increaseQuantity(item.id))}
                                                             className="w-6 h-6 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors"
-                                                            title="Increase"
+                                                            title="বাড়ান"
                                                         >
                                                             <FiPlus size={11} />
                                                         </button>
@@ -942,42 +809,35 @@ const CheckoutPage = () => {
                                 {/* Totals */}
                                 <div className="px-5 py-4 space-y-2.5 border-t border-gray-100">
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-gray-500">Subtotal</span>
+                                        <span className="text-gray-500">সাবটোটাল</span>
                                         <span className="text-gray-900 font-medium">৳{totalPrice.toLocaleString()}</span>
                                     </div>
                                     {appliedCoupon && (
                                         <div className="flex justify-between text-sm text-green-600">
                                             <span className="flex items-center gap-1">
-                                                <FiTag size={12} /> Coupon ({appliedCoupon.code})
+                                                <FiTag size={12} /> কুপন ({appliedCoupon.code})
                                             </span>
                                             <span className="font-medium">-৳{appliedCoupon.discount.toLocaleString()}</span>
                                         </div>
                                     )}
                                     <div className="flex justify-between text-sm">
                                         <span className="text-gray-500">
-                                            Delivery
+                                            ডেলিভারি চার্জ
                                             {estimatedDays && (
-                                                <span className="block text-xs text-gray-400">Est. {estimatedDays}</span>
+                                                <span className="block text-xs text-gray-400">আনুমানিক {estimatedDays}</span>
                                             )}
                                         </span>
                                         {freeShipping ? (
                                             <span className="text-right">
-                                                <span className="font-medium text-green-600">FREE</span>
+                                                <span className="font-medium text-green-600">ফ্রি</span>
                                                 {freeReasonLabel && <span className="block text-[10px] text-green-600/70">{freeReasonLabel}</span>}
                                             </span>
-                                        ) : area ? (
-                                            <span className="text-right">
-                                                <span className="text-gray-900">৳{shippingCost.toLocaleString()}</span>
-                                                <span className="block text-[10px] text-gray-400">{area === 'inside_dhaka' ? 'Inside Dhaka' : 'Outside Dhaka'}</span>
-                                            </span>
                                         ) : (
-                                            <span className="text-right text-xs text-gray-400">
-                                                Inside Dhaka ৳{insideRate}<br />Outside Dhaka ৳{outsideRate}
-                                            </span>
+                                            <span className="text-gray-900">৳{shippingCost.toLocaleString()}</span>
                                         )}
                                     </div>
                                     <div className="flex justify-between items-center pt-3 mt-1 border-t border-gray-100">
-                                        <span className="text-sm font-semibold text-gray-900">Total</span>
+                                        <span className="text-sm font-semibold text-gray-900">সর্বমোট</span>
                                         <div className="text-right">
                                             {appliedCoupon && (
                                                 <p className="text-xs line-through text-gray-400">৳{(totalPrice + shippingCost).toLocaleString()}</p>
@@ -989,8 +849,8 @@ const CheckoutPage = () => {
                                     </div>
                                     <p className="text-xs text-gray-400">
                                         {selectedPayment === 'cod'
-                                            ? <><span className="font-medium text-green-600">Cash on Delivery</span> — pay when delivered</>
-                                            : <>Paying via <span className="font-medium" style={{ color: activeMethod.color }}>{activeMethod.label}</span></>
+                                            ? <><span className="font-medium text-green-600">ক্যাশ অন ডেলিভারি</span> — পণ্য পেয়ে টাকা দিন</>
+                                            : <>পেমেন্ট: <span className="font-medium" style={{ color: activeMethod.color }}>{activeMethod.label}</span></>
                                         }
                                     </p>
                                 </div>
@@ -1005,15 +865,15 @@ const CheckoutPage = () => {
                                         {isSubmitting ? (
                                             <>
                                                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                Placing order...
+                                                অর্ডার হচ্ছে...
                                             </>
                                         ) : (
-                                            <><FiLock size={14} /> Place Order</>
+                                            <><FiLock size={14} /> অর্ডার করুন</>
                                         )}
                                     </button>
                                     <p className="text-xs text-gray-400 text-center mt-3 leading-relaxed">
-                                        By placing this order you agree to our{' '}
-                                        <Link href="/terms" className="underline hover:text-gray-600">Terms &amp; Conditions</Link>
+                                        অর্ডার করার মাধ্যমে আপনি আমাদের{' '}
+                                        <Link href="/terms" className="underline hover:text-gray-600">শর্তাবলীতে</Link> সম্মত হচ্ছেন
                                     </p>
                                 </div>
                             </div>

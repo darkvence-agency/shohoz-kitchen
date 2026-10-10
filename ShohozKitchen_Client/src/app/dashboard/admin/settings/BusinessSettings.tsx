@@ -2,11 +2,9 @@
 
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
-import { LuMapPin } from 'react-icons/lu';
 import {
     useGetShippingSettingsQuery,
     useUpdateShippingSettingsMutation,
-    useGetDeliveryZonesQuery,
     type ShippingSettings,
 } from '@/redux/api/shippingApi';
 import { Btn, Card, Field, Toggle, taka } from '@/components/admin/ui';
@@ -134,96 +132,56 @@ function CodChargeCard({ savedBps, insideRate, syncing }: { savedBps: number; in
 
 /* ─── Delivery charge ─────────────────────────────────────── */
 
-type DeliveryDraft = { inside?: string; outside?: string; threshold?: string; thresholdOn?: boolean };
+type DeliveryDraft = { charge?: string; threshold?: string; thresholdOn?: boolean };
 
 function DeliveryChargeCard({ settings, syncing }: { settings: ShippingSettings; syncing: boolean }) {
     const [save, { isLoading: saving }] = useUpdateShippingSettingsMutation();
-    const { data: zones = [] } = useGetDeliveryZonesQuery();
     const [draft, setDraft] = useState<DeliveryDraft>({});
 
-    const insideText = draft.inside ?? String(settings.defaultInsideDhakaRate ?? 0);
-    const outsideText = draft.outside ?? String(settings.defaultOutsideDhakaRate ?? 0);
+    const chargeText = draft.charge ?? String(settings.defaultInsideDhakaRate ?? 0);
     const thresholdText = draft.threshold ?? String(settings.freeShippingThreshold ?? 0);
     const thresholdOn = draft.thresholdOn ?? settings.freeShippingByThresholdEnabled;
 
-    const inside = parseMoney(insideText);
-    const outside = parseMoney(outsideText);
+    const charge = parseMoney(chargeText);
     const threshold = parseMoney(thresholdText);
     const thresholdError = threshold.error
         ?? (thresholdOn && threshold.value === 0 ? 'Enter an amount above ৳0, or turn free delivery off' : undefined);
 
     // Only send what changed, so a save here never overwrites a value someone
-    // else just saved from another tab.
+    // else just saved from another tab. One flat charge → defaultInsideDhakaRate.
     const patch: Partial<ShippingSettings> = {};
-    if (inside.value !== undefined && inside.value !== settings.defaultInsideDhakaRate) patch.defaultInsideDhakaRate = inside.value;
-    if (outside.value !== undefined && outside.value !== settings.defaultOutsideDhakaRate) patch.defaultOutsideDhakaRate = outside.value;
+    if (charge.value !== undefined && charge.value !== settings.defaultInsideDhakaRate) patch.defaultInsideDhakaRate = charge.value;
     if (threshold.value !== undefined && threshold.value !== settings.freeShippingThreshold) patch.freeShippingThreshold = threshold.value;
     if (thresholdOn !== settings.freeShippingByThresholdEnabled) patch.freeShippingByThresholdEnabled = thresholdOn;
 
-    const hasError = !!(inside.error || outside.error || thresholdError);
+    const hasError = !!(charge.error || thresholdError);
     const changed = Object.keys(patch).length > 0;
     const dirty = Object.keys(draft).length > 0 && (changed || hasError);
 
     const onSave = async () => {
         try {
             await save(patch).unwrap();
-            toast.success('Delivery charges saved');
+            toast.success('Delivery charge saved');
         } catch (err) {
-            toast.error(apiError(err, 'Could not save the delivery charges'));
+            toast.error(apiError(err, 'Could not save the delivery charge'));
         }
     };
-
-    const hasZones = zones.length > 0;
 
     return (
         <Card
             title="Delivery charge"
             description={settings.freeShippingByThresholdEnabled && settings.freeShippingThreshold > 0
-                ? `What a customer pays for delivery. Orders at or above the free delivery threshold pay ${taka(0)} regardless of zone.`
-                : 'What a customer pays for delivery.'}
+                ? `A single flat charge every order pays for delivery. Orders at or above the free delivery amount pay ${taka(0)}.`
+                : 'A single flat charge every order pays for delivery.'}
         >
-            {hasZones && (
-                <div className="mb-4 rounded-xl border border-gray-200">
-                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3.5 py-2.5">
-                        <p className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
-                            <LuMapPin size={14} className="text-gray-400" /> Zones at checkout
-                        </p>
-                    </div>
-                    <ul className="divide-y divide-gray-100">
-                        {zones.map((z) => (
-                            <li key={z._id} className="flex items-center justify-between gap-3 px-3.5 py-2 text-sm">
-                                <span className="min-w-0 truncate text-gray-700">{z.name}</span>
-                                <span className="shrink-0 text-gray-500">
-                                    <span className="font-medium text-gray-900">{taka(z.price)}</span>
-                                    {z.estimatedDays && <span className="text-xs"> · {z.estimatedDays}</span>}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
-                    <p className="border-t border-gray-100 px-3.5 py-2 text-xs text-gray-400">
-                        Customers pick a zone at checkout and pay its rate. The charges below apply when no zone is picked or matched.
-                    </p>
-                </div>
-            )}
-
-            <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                    label="Inside Dhaka"
-                    error={inside.error}
-                    hint={hasZones ? 'When no zone applies' : undefined}
-                >
-                    <UnitInput unit="৳" aria-label="Inside Dhaka delivery charge" value={insideText} invalid={!!inside.error}
-                        onChange={(v) => setDraft((d) => ({ ...d, inside: v }))} />
-                </Field>
-                <Field
-                    label="Outside Dhaka"
-                    error={outside.error}
-                    hint={hasZones ? 'When no zone applies' : undefined}
-                >
-                    <UnitInput unit="৳" aria-label="Outside Dhaka delivery charge" value={outsideText} invalid={!!outside.error}
-                        onChange={(v) => setDraft((d) => ({ ...d, outside: v }))} />
-                </Field>
-            </div>
+            <Field
+                label="Delivery charge"
+                error={charge.error}
+                hint="Charged on every order unless a free-delivery rule applies."
+            >
+                <UnitInput unit="৳" aria-label="Delivery charge" className="sm:w-1/2" value={chargeText} invalid={!!charge.error}
+                    onChange={(v) => setDraft((d) => ({ ...d, charge: v }))} />
+            </Field>
 
             <div className="mt-5 border-t border-gray-100 pt-4">
                 <Toggle
@@ -236,8 +194,8 @@ function DeliveryChargeCard({ settings, syncing }: { settings: ShippingSettings;
                     label="Free delivery over"
                     error={thresholdOn ? thresholdError : threshold.error}
                     hint={thresholdOn
-                        ? (threshold.value ? `Orders of ${taka(threshold.value)} or more pay ${taka(0)}, whatever the zone.` : undefined)
-                        : 'Off: orders pay the delivery charge unless another free-delivery rule applies (coupon, product, item count or zone).'}
+                        ? (threshold.value ? `Orders of ${taka(threshold.value)} or more pay ${taka(0)}.` : undefined)
+                        : 'Off: orders pay the delivery charge unless another free-delivery rule applies (coupon, product or item count).'}
                 >
                     <UnitInput unit="৳" aria-label="Free delivery threshold" className="sm:w-1/2" value={thresholdText} disabled={!thresholdOn}
                         invalid={!!(thresholdOn ? thresholdError : threshold.error)}
