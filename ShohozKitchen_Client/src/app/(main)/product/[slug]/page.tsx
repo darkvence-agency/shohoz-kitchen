@@ -10,7 +10,7 @@ import { PRODUCT_IMAGE_FALLBACK } from '@/components/shared/NewProductCard';
 import { useParams, useRouter } from 'next/navigation';
 import { decodeSlug, productPath } from '@/lib/productUrl';
 import {
-    FiHeart, FiShoppingCart, FiMinus, FiPlus, FiCheckCircle,
+    FiHeart, FiMinus, FiPlus, FiCheckCircle,
     FiStar, FiX, FiZoomIn, FiCopy, FiShare2, FiDownload,
     FiChevronUp, FiChevronDown, FiMessageSquare,
     FiEye, FiChevronRight, FiChevronLeft, FiSend,
@@ -21,7 +21,7 @@ import { trackViewItem } from '@/lib/marketing';
 import { useGetProductReviewsQuery, useCreateReviewMutation, useCanReviewQuery } from '@/redux/api/reviewApi';
 import { useGetShippingSettingsQuery } from '@/redux/api/shippingApi';
 import { useAppDispatch, useAppSelector } from '@/redux';
-import { addToCart, updateQuantity } from '@/redux/slices/cartSlice';
+import { addToCart, clearCart } from '@/redux/slices/cartSlice';
 import { useCreateInquiryMutation } from '@/redux/api/inquiryApi';
 import { useStartConversationMutation } from '@/redux/api/chatApi';
 import { useWishlist } from '@/hooks/useWishlist';
@@ -47,7 +47,6 @@ export default function ProductDetailsPage() {
     const [quantity, setQuantity] = useState(1);
     const [selectedImage, setSelectedImage] = useState(0);
     const { isInWishlist, toggle: toggleWishlistItem } = useWishlist();
-    const [addedToCart, setAddedToCart] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
     const [isLiked, setIsLiked] = useState(false);
@@ -140,25 +139,22 @@ export default function ProductDetailsPage() {
     const { data: canReviewData } = useCanReviewQuery(product?._id, { skip: !product?._id || !isAuthenticated });
     const canReviewInfo = canReviewData?.data;
 
-    const cartItems = useAppSelector((state: any) => state.cart.items);
-
     const getCartId = () => {
         const parts = [product?._id];
         if (selectedColor) parts.push(selectedColor);
         if (selectedSize) parts.push(selectedSize);
         return parts.join('_');
     };
-    const isInCart = product ? cartItems.some((item: any) => item.id === getCartId()) : false;
-
-    const handleAddToCart = () => {
+    const handleBuyNow = () => {
         if (!product) return;
         if (displayStock === 0) { toast.error('This product is out of stock'); return; }
         const cartId = getCartId();
-        if (isInCart) { setAddedToCart(true); setTimeout(() => setAddedToCart(false), 2000); return; }
+        const variantImage = activeVariant?.images?.[0] || allImages[selectedImage] || product.thumbnail;
         const itemDiscount = activeVariant
             ? (typeof activeVariant.discount === 'number' ? activeVariant.discount : (activeVariant.originalPrice && activeVariant.originalPrice > discountedPrice ? Math.round(((activeVariant.originalPrice - discountedPrice) / activeVariant.originalPrice) * 100) : 0))
             : (offerDisplay.discount || (product.originalPrice && product.originalPrice > discountedPrice ? Math.round(((product.originalPrice - discountedPrice) / product.originalPrice) * 100) : 0));
-        const variantImage = activeVariant?.images?.[0] || allImages[selectedImage] || product.thumbnail;
+        // Single-product checkout: no cart accumulation — clear, add just this item, go to checkout.
+        dispatch(clearCart());
         dispatch(addToCart({
             id: cartId,
             productId: product._id,
@@ -175,43 +171,9 @@ export default function ProductDetailsPage() {
             wholesalePrice: activeVariant?.costPrice ?? product.costPrice ?? product.wholesalePrice ?? 0,
             discount: itemDiscount,
         }));
-        setAddedToCart(true);
-        setTimeout(() => setAddedToCart(false), 2000);
-    };
-
-    const handleBuyNow = () => {
-        if (!product || displayStock === 0) return;
-        const cartId = getCartId();
-        const variantImage = activeVariant?.images?.[0] || allImages[selectedImage] || product.thumbnail;
-        const itemDiscount = activeVariant
-            ? (typeof activeVariant.discount === 'number' ? activeVariant.discount : (activeVariant.originalPrice && activeVariant.originalPrice > discountedPrice ? Math.round(((activeVariant.originalPrice - discountedPrice) / activeVariant.originalPrice) * 100) : 0))
-            : (offerDisplay.discount || (product.originalPrice && product.originalPrice > discountedPrice ? Math.round(((product.originalPrice - discountedPrice) / product.originalPrice) * 100) : 0));
-
-        if (isInCart) {
-            dispatch(updateQuantity({ id: cartId, quantity }));
-        } else {
-            dispatch(addToCart({
-                id: cartId,
-                productId: product._id,
-                name: product.name,
-                price: discountedPrice,
-                mrp: activeVariant?.originalPrice || product.originalPrice || product.price,
-                image: variantImage,
-                category: product.category?.name || 'General',
-                quantity,
-                color: selectedColor || undefined,
-                colorHex: activeVariant?.colorHex || undefined,
-                size: selectedSize || undefined,
-                variantId: activeVariant?._id || undefined,
-                wholesalePrice: activeVariant?.costPrice ?? product.costPrice ?? product.wholesalePrice ?? 0,
-                discount: itemDiscount,
-            }));
-        }
-
         try {
             localStorage.setItem('shohozkitchen_selected_cart', JSON.stringify([cartId]));
         } catch {}
-
         router.push('/checkout');
     };
 
@@ -702,16 +664,11 @@ export default function ProductDetailsPage() {
                                 </div>
                             </div>
 
-                            {/* Buttons row: Buy Now (solid) + Add to Cart (outline) */}
+                            {/* Buy Now → straight to checkout (no cart step) */}
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <button onClick={handleBuyNow} disabled={displayStock === 0}
-                                    style={{ flex: 1, height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: displayStock === 0 ? '#9ca3af' : 'var(--color-primary)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '14px', cursor: displayStock === 0 ? 'not-allowed' : 'pointer', borderRadius: '4px', transition: 'all 0.2s' }}>
-                                    Buy Now
-                                </button>
-                                <button onClick={handleAddToCart} disabled={displayStock === 0}
-                                    style={{ flex: 1, height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: addedToCart ? 'var(--color-primary)' : 'rgba(var(--color-primary-rgb), 0.08)', border: '1.5px solid var(--color-primary)', color: addedToCart ? '#fff' : 'var(--color-primary)', fontWeight: 700, fontSize: '14px', cursor: displayStock === 0 ? 'not-allowed' : 'pointer', borderRadius: '4px', transition: 'all 0.2s', opacity: displayStock === 0 ? 0.5 : 1 }}>
-                                    {addedToCart ? <FiCheckCircle size={15} /> : <FiShoppingCart size={15} />}
-                                    {addedToCart ? 'Added!' : isInCart ? '✓ In Cart' : 'Add to Cart'}
+                                    style={{ flex: 1, height: '46px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: displayStock === 0 ? '#9ca3af' : 'var(--color-primary)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '15px', cursor: displayStock === 0 ? 'not-allowed' : 'pointer', borderRadius: '4px', transition: 'all 0.2s' }}>
+                                    {displayStock === 0 ? 'Out of Stock' : 'Buy Now'}
                                 </button>
                             </div>
                         </div>

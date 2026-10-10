@@ -28,8 +28,7 @@ const Footer: React.FC = () => {
     const quickLinks = [
         { label: "Home", href: "/" },
         { label: "My Account", href: "/dashboard/user" },
-        { label: "Cart", href: "/cart" },
-        { label: "Checkout", href: "/checkout" },
+        { label: "Products", href: "/products" },
     ];
 
     return (

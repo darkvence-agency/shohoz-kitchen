@@ -6,7 +6,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-    FiShoppingCart, FiChevronDown, FiMenu, FiX,
+    FiChevronDown, FiMenu, FiX,
     FiUser, FiHeart, FiPhone, FiMail, FiLogOut,
     FiGrid, FiBox, FiHeadphones, FiMapPin, FiGlobe,
 } from 'react-icons/fi';
@@ -59,7 +59,6 @@ const Header: React.FC = () => {
     const mobileSearchCatRef = useRef<HTMLDivElement>(null);
     const catMenuRef = useRef<HTMLDivElement>(null);
 
-    const cartItems = useAppSelector((state) => state.cart.items);
     const { count: wishlistCount } = useWishlist();
     const { user, isAuthenticated } = useAppSelector((state) => state.auth);
     const dispatch = useAppDispatch();
@@ -347,22 +346,6 @@ const Header: React.FC = () => {
                                     Products
                                 </Link>
 
-                                <Link
-                                    href="/cart"
-                                    className="hidden sm:flex items-center justify-center w-[42px] h-[40px] rounded transition-colors hover:bg-[var(--color-primary-lightest)] cursor-pointer select-none"
-                                    style={{ color: 'var(--color-text-primary)' }}
-                                    aria-label="Cart"
-                                >
-                                    <div className="relative">
-                                        <FiShoppingCart size={22} strokeWidth={1.8} />
-                                        <span
-                                            className="absolute -top-2 -right-2.5 text-white text-[9px] min-w-[17px] h-[17px] px-0.5 rounded-full flex items-center justify-center font-bold ring-2 ring-white"
-                                            style={{ background: 'var(--color-sale)' }}
-                                        >
-                                            {cartItems.length > 99 ? '99+' : cartItems.length}
-                                        </span>
-                                    </div>
-                                </Link>
 
                                 {isAuthenticated && user ? (
                                     <div className="relative hidden sm:block" ref={profileRef}>

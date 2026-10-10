@@ -13,7 +13,6 @@ import {
 } from '@/redux/api/reviewApi';
 import { useToggleWishlistMutation, useGetWishlistQuery } from '@/redux/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/redux';
-import { addToCart } from '@/redux/slices/cartSlice';
 import { toggleWishlist } from '@/redux/slices/wishlistSlice';
 import { FiStar, FiX, FiCopy, FiCheck, FiSend, FiThumbsUp, FiCornerDownRight, FiHeart } from 'react-icons/fi';
 import { getDisplayPrice } from '@/utils/offerPrice';
@@ -64,8 +63,6 @@ const NewProductCard: React.FC<NewProductCardProps> = ({ product }) => {
 
     // Auth + cart state
     const { isAuthenticated } = useAppSelector((state: any) => state.auth);
-    const cartItems = useAppSelector((state: any) => state.cart.items);
-    const isInCart = cartItems.some((item: any) => item.id === productId);
 
     // Wishlist state — server for logged-in users, Redux for guests
     const localWishlist = useAppSelector((state: any) => state.wishlist.items);
@@ -75,7 +72,6 @@ const NewProductCard: React.FC<NewProductCardProps> = ({ product }) => {
         ? serverItems.some((item: any) => String(item._id || item.id) === productId)
         : localWishlist.some((item: any) => item.id === productId);
     const [wishlistAnim, setWishlistAnim] = useState(false);
-    const [showAlreadyAdded, setShowAlreadyAdded] = useState(false);
 
     // Falls back to a local placeholder rather than via.placeholder.com: that
     // service has been unreliable since 2024, and a card whose image 404s would
@@ -107,25 +103,6 @@ const NewProductCard: React.FC<NewProductCardProps> = ({ product }) => {
                 rating: product.rating || 0,
             }));
         }
-    };
-
-    const handleAddToCart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (isInCart) {
-            setShowAlreadyAdded(true);
-            setTimeout(() => setShowAlreadyAdded(false), 1500);
-            return;
-        }
-        dispatch(addToCart({
-            id: productId,
-            productId: productId,
-            name: product.name,
-            price: product.price,
-            mrp: product.originalPrice || product.mrp || product.price,
-            image: product.image,
-            category: product.categoryName || 'General',
-        }));
     };
 
     // Respect the offer-validity window: while the offer is active the card shows
@@ -160,15 +137,6 @@ const NewProductCard: React.FC<NewProductCardProps> = ({ product }) => {
                                 -{discountPercent}%
                             </span>
                         )}
-                        {/* Cart Button — hidden, slides in on card hover */}
-                        <button
-                            onClick={handleAddToCart}
-                            className='absolute top-2 right-2 z-10 w-8 h-8 rounded-full flex items-center justify-center shadow-md border border-slate-100 text-slate-700 transition-all duration-200 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 hover:scale-110 bg-white hover:bg-[var(--color-primary)] hover:text-white hover:border-[var(--color-primary)]'
-                            title={isInCart ? 'Already in Cart' : 'Add to Cart'}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                            {isInCart && <span className='absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full ring-2 ring-white' />}
-                        </button>
                         {/* Wishlist Button — hidden, slides in on card hover (slight delay) */}
                         <button
                             onClick={handleWishlistToggle}

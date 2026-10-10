@@ -2,18 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FiHome, FiGrid, FiShoppingCart, FiUser, FiHeart } from 'react-icons/fi';
+import { FiHome, FiGrid, FiUser, FiHeart } from 'react-icons/fi';
 import { useAppSelector } from '@/redux';
 
 export default function MobileBottomNav() {
     const pathname = usePathname();
-    const cartItems = useAppSelector((s) => s.cart.items);
     const { isAuthenticated } = useAppSelector((s) => s.auth);
 
     const items = [
         { href: '/',          icon: FiHome,         label: 'Home' },
         { href: '/products',  icon: FiGrid,          label: 'Shop' },
-        { href: '/cart',      icon: FiShoppingCart,  label: 'Cart',    badge: cartItems.length },
         { href: '/wishlist',  icon: FiHeart,         label: 'Wishlist' },
         {
             href: isAuthenticated ? '/dashboard/user' : '/login',
@@ -42,14 +40,6 @@ export default function MobileBottomNav() {
                                     strokeWidth={active ? 2.3 : 1.7}
                                     style={{ color: active ? 'var(--color-primary)' : '#9ca3af' }}
                                 />
-                                {item.badge && item.badge > 0 ? (
-                                    <span
-                                        className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-0.5 rounded-full flex items-center justify-center text-white text-[8px] font-bold ring-2 ring-white"
-                                        style={{ background: 'var(--color-primary)' }}
-                                    >
-                                        {item.badge > 9 ? '9+' : item.badge}
-                                    </span>
-                                ) : null}
                             </div>
                             <span
                                 className="text-[10px] font-medium leading-none"

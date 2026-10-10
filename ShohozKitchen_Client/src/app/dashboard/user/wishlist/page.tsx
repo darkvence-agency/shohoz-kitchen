@@ -11,13 +11,15 @@ import {
 } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import { useGetWishlistQuery, useToggleWishlistMutation } from '@/redux/api/userApi';
+import { useRouter } from 'next/navigation';
 import { useAppDispatch } from '@/redux/hooks';
-import { addToCart } from '@/redux/slices/cartSlice';
+import { addToCart, clearCart } from '@/redux/slices/cartSlice';
 
 export default function WishlistPage() {
     const { data, isLoading } = useGetWishlistQuery({});
     const [toggleWishlist, { isLoading: toggling }] = useToggleWishlistMutation();
     const dispatch = useAppDispatch();
+    const router = useRouter();
 
     const wishlistItems = data?.data || [];
 
@@ -31,6 +33,8 @@ export default function WishlistPage() {
 
     const handleAddToCart = (product: any) => {
         if (product.stock <= 0) { toast.error('This product is out of stock'); return; }
+        // No cart step — buy this one product straight away.
+        dispatch(clearCart());
         dispatch(addToCart({
             id: product._id,
             productId: product._id,
@@ -40,7 +44,8 @@ export default function WishlistPage() {
             image: product.images?.[0] || '',
             category: 'General',
         }));
-        toast.success('Added to cart');
+        try { localStorage.setItem('shohozkitchen_selected_cart', JSON.stringify([product._id])); } catch {}
+        router.push('/checkout');
     };
 
     return (
@@ -115,7 +120,7 @@ export default function WishlistPage() {
                                     <button
                                         onClick={() => handleAddToCart(product)}
                                         disabled={product.stock <= 0}
-                                        title={product.stock > 0 ? 'Add to cart' : 'Out of stock'}
+                                        title={product.stock > 0 ? 'Buy now' : 'Out of stock'}
                                         className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg hover:bg-[var(--color-primary)] hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <FiShoppingCart size={16} />
