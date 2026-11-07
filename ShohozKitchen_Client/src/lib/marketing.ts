@@ -63,6 +63,13 @@ const TIKTOK_EVENT: Record<EventName, string> = {
 const w = (): any => (typeof window === 'undefined' ? null : window);
 
 /**
+ * The site's own Meta Pixel runs only when its ID is set under Digital marketing.
+ * fbq existing is not enough: GTM can load it too and send these events itself, and
+ * calling it here as well would count every event twice.
+ */
+const siteMetaPixelOn = (win: any) => win.__siteMetaPixel === true && typeof win.fbq === 'function';
+
+/**
  * One shop event to every tracker that is on. Each call is guarded: a tracker that
  * is not configured (or blocked by an ad blocker) is skipped, and nothing here can
  * throw into the page that called it.
@@ -92,7 +99,7 @@ function send(event: EventName, items: TrackItem[], value: number, extra: Record
             win.gtag('event', event, { currency: CURRENCY, value: total, items: gaItems, ...extra });
         }
         // Meta Pixel.
-        if (typeof win.fbq === 'function') {
+        if (siteMetaPixelOn(win)) {
             win.fbq('track', META_EVENT[event], {
                 content_ids: items.map((i) => i.id),
                 content_type: 'product',
@@ -148,7 +155,7 @@ export function trackPageView(path: string) {
     if (!win) return;
     try {
         if (Array.isArray(win.dataLayer)) win.dataLayer.push({ event: 'page_view', page_path: path });
-        if (typeof win.fbq === 'function') win.fbq('track', 'PageView');
+        if (siteMetaPixelOn(win)) win.fbq('track', 'PageView');
         if (win.ttq && typeof win.ttq.page === 'function') win.ttq.page();
     } catch {
         // never break navigation
